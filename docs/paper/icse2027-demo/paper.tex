@@ -1,0 +1,441 @@
+%==============================================================================
+% ICSE 2027 -- Tool Demonstration and Data Showcase Track
+% arcade-agent: Architecture Recovery and Conformance Inside the Agent's Loop
+%
+% SKELETON ONLY. Section scaffolding, verified tables, and figure stubs.
+% The prose is not written; each section carries a \secbudget and TODO notes
+% taken from OUTLINE.md in this directory.
+%
+% BEFORE DRAFTING, verify against the official CFP
+%   https://conf.researchr.org/track/icse-2027/icse-2027-demonstrations
+% the four constraints this file assumes:
+%   (1) 4 pages INCLUSIVE of references, figures, tables, appendices
+%   (2) IEEEtran, [10pt,conference], no compsoc
+%   (3) single-anonymous -- authors ARE named
+%   (4) the demo video URL is appended to the END of the abstract
+% All four came from search snippets, not the CFP itself. See OUTLINE.md Sec. 1.
+%==============================================================================
+
+\documentclass[10pt,conference]{IEEEtran}
+% Do NOT add compsoc or compsocconf.
+
+\usepackage{cite}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{amssymb}
+\usepackage{balance}          % balance the last page's columns
+\usepackage[hidelinks]{hyperref}
+\usepackage{url}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,fit,backgrounds}
+
+%------------------------------------------------------------------------------
+% Draft scaffolding. Flip \draftmodetrue -> \draftmodefalse for the submission
+% PDF: every \todo and \secbudget disappears and the page count becomes real.
+%------------------------------------------------------------------------------
+\newif\ifdraftmode
+\draftmodetrue
+
+\ifdraftmode
+  \newcommand{\todo}[1]{{\color{red}\small[\textbf{TODO} #1]}}
+  \newcommand{\secbudget}[1]{{\color{blue!70!black}\scriptsize\textit{[budget: #1]}}\par}
+\else
+  \newcommand{\todo}[1]{}
+  \newcommand{\secbudget}[1]{}
+\fi
+
+% Consistent typesetting for tool names, so a global rename is one edit.
+\newcommand{\tool}[1]{\texttt{#1}}
+\newcommand{\arcade}{\textsc{arcade-agent}}
+\newcommand{\arcguard}{\textsc{arcade-guard}}
+
+\lstset{
+  basicstyle=\ttfamily\scriptsize,
+  breaklines=true,
+  columns=fullflexible,
+  frame=single,
+  framesep=3pt,
+  aboveskip=4pt,
+  belowskip=4pt,
+  xleftmargin=2pt,
+  literate={->}{{$\rightarrow$}}1
+}
+
+\begin{document}
+
+%==============================================================================
+% TITLE AND AUTHORS
+% Single-anonymous review: real names and affiliations go here.
+%==============================================================================
+\title{\arcade{}: Architecture Recovery and Conformance\\Inside the Coding Agent's Loop}
+
+\author{
+  \IEEEauthorblockN{\todo{author names -- confirm list and order}}
+  \IEEEauthorblockA{\todo{affiliations}\\\todo{emails}}
+}
+
+\maketitle
+
+%==============================================================================
+% ABSTRACT -- target <= 150 words.
+% The video URL is a submission requirement and goes at the very END.
+%==============================================================================
+\begin{abstract}
+\todo{$\le$150 words, one sentence per slot:}
+\todo{(1) Coding agents produce working code and decaying architecture; nothing
+guards architecture while code is being written.}
+\todo{(2) \arcade{} is an installable library and MCP server that puts architecture
+recovery, smell detection, decay metrics, and conformance checking inside the
+agent's loop.}
+\todo{(3) Mechanism: 19 MCP tools over 7 language parsers and 5 recovery
+algorithms, with per-call token budgeting and session handles so an agent can
+afford to call them.}
+\todo{(4) The guardrail is proactive -- it answers where code should live and
+what it may depend on before the code exists.}
+\todo{(5) Evidence: on greenfield tasks an unaided agent introduced a forbidden
+dependency in 3 of 14 runs; with the guardrail, 0 of 14, with no false positives.}
+\todo{(6) Availability: pip, MIT, public repo.}
+
+\medskip
+\noindent Demonstration video: \url{TODO-video-url}
+\todo{REQUIRED by the track; must be live and reachable without login before
+submission. See OUTLINE.md Sec. 6.}
+\end{abstract}
+
+\begin{IEEEkeywords}
+software architecture, architecture recovery, architectural decay, conformance
+checking, AI coding agents, Model Context Protocol
+\end{IEEEkeywords}
+
+%==============================================================================
+\section{Introduction}
+\secbudget{0.8 col}
+%==============================================================================
+\todo{Hook. Type checkers guard types, linters guard style, tests guard
+behavior -- nothing guards architecture while the code is being written. The
+framing already exists in arcade-analyze-skill/GUARDRAIL\_PLAN.md; tighten it,
+do not re-invent it.}
+
+\todo{Why it matters: architectural decay is measured and costly. Cite the decay
+and change-proneness line~\cite{le2018decay,le2021decay-predictor,le2015change}.}
+
+\todo{Why existing tools do not fit the agent loop: batch, slow, human-facing,
+output measured in megabytes of HTML. An agent has a token budget and a latency
+budget. Post-hoc CI conformance tells the agent it was wrong after the fact, and
+a red X with no fix makes an agent thrash.}
+
+\todo{State the claim in one sentence -- see OUTLINE.md Sec. 2. Then be explicit
+about what is NOT claimed: the recovery algorithms are prior
+work~\cite{tzerpos2000acdc,garcia2011arc,andritsos2004limbo,maqbool2004wca,laser2020arcade}.
+The contribution is the delivery vehicle. Saying this plainly is cheaper than
+having a reviewer discover it.}
+
+\noindent\textbf{Contributions.}
+\begin{itemize}
+  \item \todo{An installable, framework-agnostic architecture-analysis library
+        (\tool{pip install arcade-agent}) with 7 language parsers and 5 recovery
+        algorithms.}
+  \item \todo{An MCP server exposing 19 tools with per-call \tool{max\_tokens}
+        budgeting and a session-handle protocol, so agents consume summaries,
+        not dumps.}
+  \item \todo{Four task-shaped context tools that answer an agent's actual
+        question instead of returning a graph.}
+  \item \todo{An executable architecture contract plus proactive guardrail
+        tools, with evidence that they eliminate a violation class an unaided
+        agent produces roughly one run in five on greenfield code.}
+\end{itemize}
+
+%==============================================================================
+\section{Motivating Scenario}
+\label{sec:motivation}
+\secbudget{0.8 col + Fig.~\ref{fig:scenario}}
+%==============================================================================
+\todo{One concrete vignette -- use the greenfield orders service, because it
+doubles as the evaluated case in Sec.~\ref{sec:evidence}. An agent is told to
+add order listing and totals in a repo whose API layer must not touch the store.
+Unaided it imports app.store from app.api: the shortest path to a working
+feature. With the guardrail it calls \tool{propose\_placement}, is told the logic
+belongs in \tool{service}, calls \tool{preview\_impact} on the api->store edge,
+is told it would violate, and routes through the service layer instead.}
+
+\begin{figure}[t]
+  \centering
+  \fbox{\parbox[c][2.6cm][c]{0.92\columnwidth}{\centering
+    \todo{FIGURE 1 -- two import graphs side by side: the unaided result with
+    the forbidden \tool{api}$\rightarrow$\tool{store} edge in red, and the
+    guarded result, clean. Draw in TikZ. Keep to one column. This figure is the
+    whole paper in one picture.}}}
+  \caption{The same task, with and without the guardrail.}
+  \label{fig:scenario}
+\end{figure}
+
+%==============================================================================
+\section{Architecture and Implementation}
+\label{sec:impl}
+\secbudget{1.6 col + Fig.~\ref{fig:pipeline}}
+%==============================================================================
+\todo{Pipeline: ingest $\rightarrow$ parse $\rightarrow$ recover $\rightarrow$
+detect\_smells $\rightarrow$ compute\_metrics $\rightarrow$ compare, plus the
+conformance core reading \tool{architecture.spec.json} (intent) and
+\tool{.arcade/baseline.json} (last good state).}
+
+\subsection{Parsing}
+\todo{tree-sitter; one \tool{LanguageParser} per language behind a
+\tool{@register\_parser} registry. Seven languages: Java and Python always
+available, C, TypeScript, Go, Kotlin, and Rust via the \tool{[languages]} extra.
+Polyglot merge relinks imports and inheritance across FQN space.}
+
+\todo{LIMIT -- state it here, in the body, not in a footnote: relinking is
+family-scoped, and the JVM family (Java/Kotlin) is the only validated pair.
+Every other language is its own family and merges without cross-language edges.
+Overclaiming general cross-language recovery is a cheap reject.}
+
+\subsection{Recovery}
+\todo{Five algorithms: \tool{pkg} (default, deterministic), \tool{wca},
+\tool{acdc}, and the LLM-powered \tool{arc} and \tool{limbo}. Explain why the
+guardrail path uses only deterministic glob/package mapping: the same code must
+yield the same verdict every time, and it must be fast enough to call dozens of
+times per session. This design rationale is the most defensible engineering
+claim in the paper -- give it a real sentence, not a clause.}
+
+\subsection{Delivery to the agent}
+\todo{This subsection is what reviewers should remember. Do not let it get cut.}
+
+\paragraph*{Session handles}
+\todo{Tools return a compact summary plus a \tool{session\_id}; the agent calls
+\tool{get\_full\_result} only when it actually needs the graph. Stored types:
+\tool{IngestedRepo}, \tool{DependencyGraph}, \tool{Architecture},
+\tool{SmellList}, \tool{MetricList}. Sessions are in-process and do not survive
+a server restart -- say so, it belongs in Sec.~\ref{sec:conclusion} too.}
+
+\paragraph*{Token budgeting}
+\todo{Every tool accepts \tool{max\_tokens}. Two strategies:
+\tool{truncate\_result} applies seven ordered levels of domain-aware reduction
+to graph/architecture payloads (truncate component entity lists $\rightarrow$
+collapse entities to an FQN$\rightarrow$kind map $\rightarrow$ collapse edges to
+relation counts $\rightarrow$ drop edges $\rightarrow$ drop entities $\rightarrow$
+minimize components $\rightarrow$ drop packages), stopping as soon as the budget
+is met; \tool{enforce\_budget} drops the largest top-level key repeatedly for
+everything else, flagging \tool{\_budget\_truncated}. GIVE A CONCRETE
+BEFORE/AFTER TOKEN COUNT on a real repo -- that single number is the most
+quotable thing in the paper.}
+
+\paragraph*{Caching}
+\todo{\tool{DependencyGraph} cached to \tool{.arcade-cache/}, keyed on file
+paths plus mtimes, auto-invalidated on change. One sentence; first on the cut
+list.}
+
+\subsection{Tiered enforcement}
+\todo{The \arcguard{} layer enforces in two tiers. Advisory (MCP tools, plus a PostToolUse hook that injects findings into
+the agent's context so agents that forget to ask still get nudged) escalating to
+blocking (pre-commit hook, CI gate, \tool{--fail-on error} exits non-zero).}
+
+\begin{figure}[t]
+  \centering
+  \fbox{\parbox[c][3.4cm][c]{0.92\columnwidth}{\centering
+    \todo{FIGURE 2 -- system diagram: agent $\rightarrow$ MCP guardrail tools
+    $\rightarrow$ deterministic conformance core, reading the spec and the
+    baseline, sitting on the \arcade{} engine; verdict fans out to the advisory and
+    blocking tiers. An ASCII draft exists under ``System shape'' in
+    arcade-analyze-skill/GUARDRAIL\_PLAN.md -- redraw in TikZ, do not
+    screenshot it.}}}
+  \caption{\arcade{} in the agent's loop.}
+  \label{fig:pipeline}
+\end{figure}
+
+%==============================================================================
+\section{The Tool in Action}
+\label{sec:action}
+\secbudget{1.8 col + Fig.~\ref{fig:transcript} + Table~\ref{tab:tools}}
+%==============================================================================
+\todo{This is a demonstration paper; this section is the product. Mirror the
+video beat for beat so a reviewer can follow both at once.}
+
+\begin{enumerate}
+  \item \todo{Install and register: \tool{pip install
+        arcade-agent[mcp,languages]}, then point the agent at \tool{arcade-mcp}
+        (stdio transport).}
+  \item \todo{\emph{Understand}: \tool{summarize} on an unfamiliar repo returns
+        the package tree, dependency hotspots, and entry points in one call.
+        Contrast against the token cost of reading the files.}
+  \item \todo{\emph{Target}: \tool{context\_for\_task("add rate limiting to the
+        public API")} returns a ranked minimal file set, each with a role
+        (direct match / dependency / dependent / component sibling) and a
+        reason.}
+  \item \todo{\emph{Guard}: \tool{propose\_placement} before writing;
+        \tool{preview\_impact} before a cross-component import;
+        \tool{check\_architecture} after the edit.}
+  \item \todo{\emph{Gate}: the identical check as a pre-commit hook and in CI,
+        with the conformance PR comment.}
+  \item \todo{\emph{Self-application}: \arcade{} analyses itself in its own CI. At
+        v0.3.0: 76 source files, 407 entities, 228 edges, 11 recovered
+        components, 4 smells, with \tool{.arcade/baseline.json} committed on
+        every default-branch push so drift is caught against the last good
+        state. Cheap, honest, and memorable -- keep it.}
+\end{enumerate}
+
+\begin{figure}[t]
+\begin{lstlisting}[caption={},label={},captionpos=b]
+TODO -- replace with a REAL captured session, not a mock-up.
+Reviewers can tell the difference.
+
+The money shot is the agent calling preview_impact,
+being told the edge would violate, and changing its plan:
+
+  > preview_impact(from="api", to="store")
+  WOULD VIOLATE: forbidden-dependency api -> store
+    ("API must go through the service layer")
+  > propose_placement("order totals")
+  component: service  (may depend on: domain, store)
+\end{lstlisting}
+  \caption{An agent changing course before writing the code.}
+  \label{fig:transcript}
+\end{figure}
+
+% -----------------------------------------------------------------------------
+% TABLE I -- COMPLETE. All 19 tool names verified against origin/main @ 1b3532b
+% (v0.3.0) via arcade-agent-site/docs/content-facts.md. Only the one-line
+% descriptions remain to be written.
+% NOTE: 19 is the count of MCP-registered tools (@server.tool()). Only 15
+% functions carry @tool -- ingest and parse are plain functions exposed over
+% MCP. Never place "19" next to a number derived from list_tools(); a reviewer
+% who pip-installs and counts will find the mismatch. Say which surface you mean.
+% -----------------------------------------------------------------------------
+\begin{table}[t]
+  \centering
+  \caption{The 19 MCP tools, by purpose.}
+  \label{tab:tools}
+  \footnotesize
+  \begin{tabular}{@{}p{0.24\columnwidth}p{0.68\columnwidth}@{}}
+    \toprule
+    \textbf{Group} & \textbf{Tools} \\
+    \midrule
+    Core pipeline &
+      \tool{ingest}, \tool{parse}, \tool{analyze}, \tool{recover},
+      \tool{detect\_smells}, \tool{compute\_metrics}, \tool{compare},
+      \tool{query}, \tool{visualize} \\
+    \addlinespace
+    Comprehension &
+      \tool{summarize}, \tool{explain\_component}, \tool{find\_relevant},
+      \tool{api\_surface} \\
+    \addlinespace
+    Change-aware &
+      \tool{diff\_impact}, \tool{dependency\_cone},
+      \tool{changelog\_architecture}, \tool{context\_for\_task} \\
+    \addlinespace
+    Session &
+      \tool{get\_full\_result}, \tool{list\_sessions} \\
+    \bottomrule
+  \end{tabular}
+  \\[2pt]
+  \todo{If space runs short, collapse this to a running two-column list --
+        cut-list item 2.}
+\end{table}
+
+%==============================================================================
+\section{Evidence It Works}
+\label{sec:evidence}
+\secbudget{1.2 col + Table~\ref{tab:eval}}
+%==============================================================================
+\todo{Short, concrete, and scrupulous about scale. A demo paper does not need a
+full study; it needs credible evidence the tool does what it claims. All numbers
+below come from arcade-analyze-skill/evals/EVAL\_REPORT.md.}
+
+\todo{(1) Detection is sound and deterministic: 3 of 3 injected violations
+caught, each with the correct rule and a concrete fix; the gate exits non-zero
+every time.}
+
+\todo{(2) No false positives: across every run, each PASS was genuinely
+conformant and each FAIL a genuine forbidden import, verified by inspecting the
+imports.}
+
+\todo{(3) Behavior changes exactly where theory predicts. REPORT THE NULL
+RESULT -- on a pre-structured codebase there was no difference between
+conditions, because agents imitate the layering already present. It is the
+single most credibility-building sentence available, and it sharpens the claim:
+the guardrail matters most on new code, where there is nothing to copy.}
+
+\begin{table}[t]
+  \centering
+  \caption{Guardrail evaluation. Percentages are directional, not a benchmark.}
+  \label{tab:eval}
+  \footnotesize
+  \begin{tabular}{@{}llrrr@{}}
+    \toprule
+    \textbf{Setting} & \textbf{Condition} & \textbf{Runs} & \textbf{Viol.} & \textbf{Rate} \\
+    \midrule
+    Pre-structured & without guardrail &  6 & 0 & 0\,\% \\
+    Pre-structured & with guardrail    &  6 & 0 & 0\,\% \\
+    \addlinespace
+    Greenfield     & without guardrail & 14 & 3 & 21\,\% \\
+    Greenfield     & with guardrail    & 14 & 0 & \phantom{0}0\,\% \\
+    \addlinespace
+    Injected       & detection         &  3 & 3 & 100\,\% caught \\
+    \bottomrule
+  \end{tabular}
+  \\[2pt]
+  \todo{Confirm the ``Viol.'' column header reads correctly for the injected
+        row, where 3/3 means caught rather than committed -- consider splitting
+        that row out or footnoting it.}
+\end{table}
+
+\subsection*{Threats to validity}
+\todo{Three or four sentences, and do not skip them. All are already written
+honestly in EVAL\_REPORT.md -- compress, do not soften. (a) Small $N$ and agent
+stochasticity: the largest single cell is 10 runs per condition, so treat
+percentages as directional. (b) Both conditions were told the folder roles, so
+21\,\% is likely a floor for the unaided rate. (c) The more capable model
+complied in every condition, so the measured benefit concentrates on
+smaller and faster agents. (d) Conformance here is structural, not functional
+correctness of the implemented features.}
+
+%==============================================================================
+\section{Related Work}
+\label{sec:related}
+\secbudget{0.6 col -- dense and citation-heavy}
+%==============================================================================
+\todo{Architecture recovery: ACDC, ARC, LIMBO, WCA, and ARCADE as a
+workbench~\cite{tzerpos2000acdc,garcia2011arc,andritsos2004limbo,maqbool2004wca,laser2020arcade}.
+Position \arcade{} as reimplementing and repackaging this line -- say it outright.}
+
+\todo{Decay and conformance: decay studies and change-proneness
+work~\cite{le2018decay,le2021decay-predictor,behnamghader2017evolution},
+reflexion models~\cite{murphy1995reflexion}, and industrial conformance tools
+such as ArchUnit~\cite{archunit}. Position: all post-hoc, human-invoked,
+CI-time.}
+
+\todo{Agent context and repository comprehension: repository maps, retrieval for
+code agents, SWE-bench-style harnesses~\cite{TODO-agent-context}. Position:
+these optimize \emph{what to read}; none carries an architectural contract.}
+
+\todo{Guardrails in the agent loop: linters, type checkers, and tests already
+sit there. Position: the missing rung is architecture. Cite the MCP
+specification~\cite{mcp} for the integration surface.}
+
+%==============================================================================
+\section{Availability, Limitations, and Conclusion}
+\label{sec:conclusion}
+\secbudget{0.4 col}
+%==============================================================================
+\todo{Availability: \tool{pip install arcade-agent[mcp,languages]}; Python
+$\ge$3.12; MIT. Repository \url{https://github.com/lemduc/arcade-agent};
+documentation and usage instructions \url{https://arcade-agent.dev}; PyPI
+\tool{arcade-agent} v0.3.0; video \url{TODO-video-url}. The track requires a
+link to the publicly available tool AND its usage instructions -- both are
+submission requirements, so verify both resolve from a clean machine.}
+
+\todo{Limitations, one honest sentence each: cross-language relinking is
+validated only on the JVM family; incremental parsing is wired for Python only,
+so the sub-second guarantee does not yet generalize to very large polyglot
+repos; MCP sessions are in-process and do not survive a server restart;
+conformance is structural, not behavioral.}
+
+\todo{Conclusion: one or two sentences. No new claims.}
+
+\balance
+\bibliographystyle{IEEEtran}
+\bibliography{refs}
+
+\end{document}

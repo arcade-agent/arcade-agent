@@ -1,0 +1,148 @@
+%==============================================================================
+% refs.bib -- ICSE 2027 tool demonstration
+%
+% VERIFICATION STATUS, read this before trusting any entry:
+%
+%  [VERIFIED]  Authors, title, venue and year confirmed against
+%              arcade-agent-site/src/pages/research.astro. Volume, number,
+%              pages and DOI still need filling from the publisher record.
+%
+%  [STUB]      Placeholder. The work is real and well known, but the fields
+%              here were written from memory and are NOT verified. Confirm
+%              every field against the publisher record (DOI, pages, exact
+%              title, author order) before submitting. Do not ship a [STUB].
+%
+% Single-anonymous review, so self-citation needs no masking.
+%==============================================================================
+
+%------------------------------------------------------------------ self-cites
+% [VERIFIED]
+@inproceedings{laser2020arcade,
+  author    = {Marcelo Schmitt Laser and Nenad Medvidovi{\'c} and Duc M. Le and Joshua Garcia},
+  title     = {{ARCADE}: An Extensible Workbench for Architecture Recovery, Change, and Decay Evaluation},
+  booktitle = {Proc. ACM Joint European Software Engineering Conf. and Symp. on the Foundations of Software Engineering (ESEC/FSE)},
+  year      = {2020},
+  note      = {TODO: pages, DOI}
+}
+
+% [VERIFIED] -- MSR 2015 Best Paper Award; mentioning the award is optional.
+@inproceedings{le2015change,
+  author    = {Duc M. Le and Pooyan Behnamghader and Joshua Garcia and Daniel Link and Arman Shahbazian and Nenad Medvidovi{\'c}},
+  title     = {An Empirical Study of Architectural Change in Open-Source Software Systems},
+  booktitle = {Proc. IEEE/ACM Working Conf. on Mining Software Repositories (MSR)},
+  year      = {2015},
+  note      = {TODO: pages, DOI}
+}
+
+% [VERIFIED]
+@inproceedings{le2018decay,
+  author    = {Duc M. Le and Daniel Link and Arman Shahbazian and Nenad Medvidovi{\'c}},
+  title     = {An Empirical Study of Architectural Decay in Open-Source Software Systems},
+  booktitle = {Proc. IEEE Int. Conf. on Software Architecture (ICSA)},
+  year      = {2018},
+  note      = {TODO: pages, DOI}
+}
+
+% [VERIFIED]
+@inproceedings{le2021decay-predictor,
+  author    = {Duc M. Le and Suhrid Karthik and Marcelo Schmitt Laser and Nenad Medvidovi{\'c}},
+  title     = {Architectural Decay as Predictor of Issue- and Change-Proneness},
+  booktitle = {Proc. IEEE Int. Conf. on Software Architecture (ICSA)},
+  year      = {2021},
+  note      = {TODO: pages, DOI}
+}
+
+% [VERIFIED]
+@article{behnamghader2017evolution,
+  author  = {Pooyan Behnamghader and Duc M. Le and Joshua Garcia and Daniel Link and Arman Shahbazian and Nenad Medvidovi{\'c}},
+  title   = {A Large-Scale Study of Architectural Evolution in Open-Source Software Systems},
+  journal = {Empirical Software Engineering},
+  year    = {2017},
+  note    = {TODO: volume, number, pages, DOI}
+}
+
+% [VERIFIED] -- cite only if a thesis citation earns its space in 4 pages.
+@phdthesis{le2018thesis,
+  author = {Duc M. Le},
+  title  = {Architectural Evolution and Decay in Software Systems},
+  school = {University of Southern California},
+  year   = {2018}
+}
+
+%--------------------------------------------------------- recovery algorithms
+% Every entry below is [STUB]. These are the algorithms arcade-agent
+% reimplements, so getting them wrong is the most embarrassing possible error
+% in this paper. Verify each one.
+
+% [STUB]
+@inproceedings{tzerpos2000acdc,
+  author    = {Vassilios Tzerpos and Richard C. Holt},
+  title     = {{ACDC}: An Algorithm for Comprehension-Driven Clustering},
+  booktitle = {Proc. Working Conf. on Reverse Engineering (WCRE)},
+  year      = {2000},
+  note      = {STUB -- verify all fields against the publisher record}
+}
+
+% [STUB]
+@inproceedings{garcia2011arc,
+  author    = {Joshua Garcia and Daniel Popescu and Chris Mattmann and Nenad Medvidovi{\'c} and Yuanfang Cai},
+  title     = {Enhancing Architectural Recovery Using Concerns},
+  booktitle = {Proc. IEEE/ACM Int. Conf. on Automated Software Engineering (ASE)},
+  year      = {2011},
+  note      = {STUB -- verify author list, title and venue; this is the ARC reference}
+}
+
+% [STUB]
+@inproceedings{andritsos2004limbo,
+  author    = {Periklis Andritsos and Vassilios Tzerpos},
+  title     = {Information-Theoretic Software Clustering},
+  booktitle = {TODO: venue},
+  year      = {2004},
+  note      = {STUB -- verify venue and year; LIMBO also has a journal version in IEEE TSE}
+}
+
+% [STUB]
+@article{maqbool2004wca,
+  author  = {Onaiza Maqbool and Haroon A. Babri},
+  title   = {The Weighted Combined Algorithm: A Linkage Algorithm for Software Clustering},
+  journal = {TODO: venue},
+  year    = {2004},
+  note    = {STUB -- verify; WCA appears in CSMR 2004 and in later TSE work}
+}
+
+%------------------------------------------------------ conformance and decay
+% [STUB]
+@inproceedings{murphy1995reflexion,
+  author    = {Gail C. Murphy and David Notkin and Kevin Sullivan},
+  title     = {Software Reflexion Models: Bridging the Gap Between Source and High-Level Models},
+  booktitle = {Proc. ACM SIGSOFT Symp. on the Foundations of Software Engineering (FSE)},
+  year      = {1995},
+  note      = {STUB -- verify all fields}
+}
+
+% [STUB] -- a URL citation may be acceptable for an industrial tool; check the
+% track's reference conventions, and prefer a peer-reviewed alternative if the
+% reference budget is tight.
+@misc{archunit,
+  title = {{ArchUnit}: Unit Test Your Architecture},
+  howpublished = {\url{https://www.archunit.org}},
+  note  = {STUB -- verify URL and access date, or replace with a peer-reviewed
+           industrial conformance reference (Lattix, Structure101, Sonargraph)}
+}
+
+%-------------------------------------------------------- agents and protocol
+% [STUB]
+@misc{mcp,
+  title = {Model Context Protocol Specification},
+  howpublished = {\url{https://modelcontextprotocol.io}},
+  note  = {STUB -- verify the canonical citable URL and the spec revision to cite}
+}
+
+% PLACEHOLDER so the skeleton builds without an undefined-citation error.
+% Replace with 2--3 current references on agent context construction,
+% repository maps, and SWE-bench-style harnesses. Choose recent work; this is
+% the cluster a reviewer is most likely to find under-cited.
+@misc{TODO-agent-context,
+  title = {PLACEHOLDER -- agent context construction and repository comprehension},
+  note  = {MUST be replaced before submission. See OUTLINE.md Sec. 7.}
+}
