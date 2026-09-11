@@ -174,134 +174,211 @@ is told it would violate, and routes through the service layer instead.}
 %==============================================================================
 \section{Architecture and Implementation}
 \label{sec:impl}
-\secbudget{1.6 col + Fig.~\ref{fig:pipeline}}
 %==============================================================================
-\todo{Pipeline: ingest $\rightarrow$ parse $\rightarrow$ recover $\rightarrow$
-detect\_smells $\rightarrow$ compute\_metrics $\rightarrow$ compare, plus the
-conformance core reading \tool{architecture.spec.json} (intent) and
-\tool{.arcade/baseline.json} (last good state).}
+\arcade{} is a library first and a server second. The analysis core is a
+sequence of pure stages --- \tool{ingest}, \tool{parse}, \tool{recover},
+\tool{detect\_smells}, \tool{compute\_metrics}, \tool{compare} --- each
+independently callable, each returning a plain dataclass. The MCP server, the
+CI entry points and the guardrail are all consumers of that core rather than
+layers inside it (Fig.~\ref{fig:pipeline}).
 
 \subsection{Parsing}
-\todo{tree-sitter; one \tool{LanguageParser} per language behind a
-\tool{@register\_parser} registry. Seven languages: Java and Python always
-available, C, TypeScript, Go, Kotlin, and Rust via the \tool{[languages]} extra.
-Polyglot merge relinks imports and inheritance across FQN space.}
+Each language is a \tool{LanguageParser} implementation registered through a
+\tool{@register\_parser} decorator, so adding a language touches no shared
+dispatch code. Seven are registered: Java and Python are core dependencies and
+work out of the box; C, TypeScript, Go, Kotlin and Rust arrive with the
+\tool{[languages]} extra. Parsing is two-pass --- a per-file AST walk that
+depends only on that file's contents, then a link pass that resolves imports,
+inheritance and qualified references across the whole file set.
 
-\todo{LIMIT -- state it here, in the body, not in a footnote: relinking is
-family-scoped, and the JVM family (Java/Kotlin) is the only validated pair.
-Every other language is its own family and merges without cross-language edges.
-Overclaiming general cross-language recovery is a cheap reject.}
+Polyglot repositories are merged into one graph, but relinking is deliberately
+\emph{family-scoped}. Java and Kotlin share the \tool{jvm} family and are
+relinked against each other; every other language forms a single-member family
+and is merged without cross-language edges. Unqualified name resolution is
+likewise confined to a family, and only when the leaf name is unique within it,
+so a Python \tool{Base} can never be mistaken for a Java one. Cross-family FQN
+collisions are remapped rather than silently overwritten, and the count is
+surfaced in the result's metadata. \todo{The JVM pair is the only combination
+we have validated. Say so here rather than in a footnote --- an overclaim about
+general cross-language recovery is the cheapest possible reject.}
 
 \subsection{Recovery}
-\todo{Five algorithms: \tool{pkg} (default, deterministic), \tool{wca},
-\tool{acdc}, and the LLM-powered \tool{arc} and \tool{limbo}. Explain why the
-guardrail path uses only deterministic glob/package mapping: the same code must
-yield the same verdict every time, and it must be fast enough to call dozens of
-times per session. This design rationale is the most defensible engineering
-claim in the paper -- give it a real sentence, not a clause.}
+Five recovery algorithms are available: package-based grouping (\tool{pkg}, the
+default), \tool{wca}, \tool{acdc}, and the LLM-assisted \tool{arc} and
+\tool{limbo}. These are reimplementations of prior
+work~\cite{tzerpos2000acdc,garcia2011arc,andritsos2004limbo,maqbool2004wca}, and
+we claim no novelty for them.
 
-\subsection{Delivery to the agent}
-\todo{This subsection is what reviewers should remember. Do not let it get cut.}
+The guardrail path, however, uses only \tool{pkg} and the spec's own glob
+mapping. This is a deliberate restriction. A guardrail consulted dozens of times
+in a single agent session must return the same verdict for the same code every
+time --- an agent that receives a different answer on a retry will thrash --- and
+it must answer fast enough that calling it is never the expensive option.
+Clustering-based recovery satisfies neither constraint. Determinism here is a
+design requirement, not an implementation detail.
+
+\subsection{Delivering analysis an agent can afford}
+Architecture analysis produces far more data than an agent can read. Serializing
+the full dependency graph and recovered architecture of \arcade{} itself
+--- 407 entities, 228 edges, 11 components --- costs \textbf{63{,}586
+tokens}.\footnote{All token figures in this paper are estimates at
+four characters per token, reproducible with \tool{measure\_budget.py} in the
+paper's artifact directory.} Two mechanisms make that affordable.
 
 \paragraph*{Session handles}
-\todo{Tools return a compact summary plus a \tool{session\_id}; the agent calls
-\tool{get\_full\_result} only when it actually needs the graph. Stored types:
-\tool{IngestedRepo}, \tool{DependencyGraph}, \tool{Architecture},
-\tool{SmellList}, \tool{MetricList}. Sessions are in-process and do not survive
-a server restart -- say so, it belongs in Sec.~\ref{sec:conclusion} too.}
+Every tool returns a compact summary carrying a \tool{session\_id}; the analysed
+object itself stays server-side under a label (\tool{DependencyGraph},
+\tool{Architecture}, \tool{SmellList}, \tool{MetricList}, \tool{IngestedRepo}).
+Downstream tools accept either a session ID or an inline object, so an agent
+pipes \tool{parse} into \tool{recover} into \tool{detect\_smells} while the graph
+never crosses the wire. \tool{get\_full\_result} retrieves it only if the agent
+genuinely needs it.
 
 \paragraph*{Token budgeting}
-\todo{Every tool accepts \tool{max\_tokens}. Two strategies:
-\tool{truncate\_result} applies seven ordered levels of domain-aware reduction
-to graph/architecture payloads (truncate component entity lists $\rightarrow$
-collapse entities to an FQN$\rightarrow$kind map $\rightarrow$ collapse edges to
-relation counts $\rightarrow$ drop edges $\rightarrow$ drop entities $\rightarrow$
-minimize components $\rightarrow$ drop packages), stopping as soon as the budget
-is met; \tool{enforce\_budget} drops the largest top-level key repeatedly for
-everything else, flagging \tool{\_budget\_truncated}. GIVE A CONCRETE
-BEFORE/AFTER TOKEN COUNT on a real repo -- that single number is the most
-quotable thing in the paper.}
+Every tool additionally accepts \tool{max\_tokens}. Payloads containing a graph
+or architecture are reduced by six ordered strategies, each re-checked against
+the budget so the cheapest sufficient reduction wins: truncate component entity
+lists; collapse entities to an FQN$\rightarrow$kind map; collapse edges to
+per-relation counts; drop the entity map for kind counts; reduce components to
+name and size; drop the package map. Everything else is handled generically by
+repeatedly dropping the largest top-level key, preserving \tool{session\_id} and
+flagging \tool{\_budget\_truncated} so the agent knows the view is partial.
+Table~\ref{tab:budget} shows the effect on \arcade{}'s own graph.
 
-\paragraph*{Caching}
-\todo{\tool{DependencyGraph} cached to \tool{.arcade-cache/}, keyed on file
-paths plus mtimes, auto-invalidated on change. One sentence; first on the cut
-list.}
+\todo{Optional, and first on the cut list if space is tight, but it pre-empts a
+reviewer who runs the numbers: the reduction is coarse. Between the 8k and 4k
+budgets the payload falls from 6{,}468 to 216 tokens, because the fourth
+strategy discards the entity map wholesale rather than sampling it. The budget
+is respected but rarely approached from below.}
 
-\subsection{Tiered enforcement}
-\todo{The \arcguard{} layer enforces in two tiers. Advisory (MCP tools, plus a PostToolUse hook that injects findings into
-the agent's context so agents that forget to ask still get nudged) escalating to
-blocking (pre-commit hook, CI gate, \tool{--fail-on error} exits non-zero).}
+\subsection{Caching and enforcement}
+Parsed graphs are cached under \tool{.arcade-cache/}. A content-hash-keyed
+extract cache reuses the per-file pass for byte-identical files, so the
+\tool{git checkout} and \tool{touch} churn of an agent session does not force a
+re-parse; the link pass always runs in full, so edges can never go stale. This
+incremental path is currently wired for the Python parser only.
+
+\arcguard{} then enforces in two tiers. Advisory: the MCP tools, plus a
+\tool{PostToolUse} hook that runs a check after each edit and injects findings
+into the agent's context, so agents that forget to ask still get told. Blocking:
+the same conformance engine as a pre-commit hook and a CI gate, exiting non-zero
+on failure. Both tiers call one deterministic core, so the advisory answer an
+agent receives mid-session and the verdict CI produces later cannot disagree.
 
 \begin{figure}[t]
   \centering
   \fbox{\parbox[c][3.4cm][c]{0.92\columnwidth}{\centering
-    \todo{FIGURE 2 -- system diagram: agent $\rightarrow$ MCP guardrail tools
+    \todo{FIGURE 2 --- system diagram: agent $\rightarrow$ MCP guardrail tools
     $\rightarrow$ deterministic conformance core, reading the spec and the
-    baseline, sitting on the \arcade{} engine; verdict fans out to the advisory and
-    blocking tiers. An ASCII draft exists under ``System shape'' in
-    arcade-analyze-skill/GUARDRAIL\_PLAN.md -- redraw in TikZ, do not
-    screenshot it.}}}
+    baseline, over the \arcade{} engine; the verdict fans out to the advisory
+    and blocking tiers. An ASCII draft exists under ``System shape'' in
+    arcade-analyze-skill/GUARDRAIL\_PLAN.md --- redraw in TikZ.}}}
   \caption{\arcade{} in the agent's loop.}
   \label{fig:pipeline}
 \end{figure}
 
+% -----------------------------------------------------------------------------
+% TABLE: measured, not estimated. Reproduce with measure_budget.py.
+% -----------------------------------------------------------------------------
+\begin{table}[t]
+  \centering
+  \caption{Token budgeting applied to \arcade{}'s own dependency graph and
+           recovered architecture (63{,}586 tokens unreduced).}
+  \label{tab:budget}
+  \footnotesize
+  \begin{tabular}{@{}rrl@{}}
+    \toprule
+    \textbf{Budget} & \textbf{Actual} & \textbf{Deepest reduction applied} \\
+    \midrule
+    --      & 63{,}586 & none \\
+    16{,}000 & 12{,}644 & entities collapsed to FQN$\rightarrow$kind \\
+     8{,}000 &  6{,}468 & edges collapsed to relation counts \\
+     4{,}000 &     216 & entity and package maps dropped \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
 %==============================================================================
 \section{The Tool in Action}
 \label{sec:action}
-\secbudget{1.8 col + Fig.~\ref{fig:transcript} + Table~\ref{tab:tools}}
 %==============================================================================
-\todo{This is a demonstration paper; this section is the product. Mirror the
-video beat for beat so a reviewer can follow both at once.}
+The demonstration follows one agent session end to end. \todo{Keep this section
+and the video in lockstep, beat for beat, so a reviewer can follow both at once.}
 
-\begin{enumerate}
-  \item \todo{Install and register: \tool{pip install
-        arcade-agent[mcp,languages]}, then point the agent at \tool{arcade-mcp}
-        (stdio transport).}
-  \item \todo{\emph{Understand}: \tool{summarize} on an unfamiliar repo returns
-        the package tree, dependency hotspots, and entry points in one call.
-        Contrast against the token cost of reading the files.}
-  \item \todo{\emph{Target}: \tool{context\_for\_task("add rate limiting to the
-        public API")} returns a ranked minimal file set, each with a role
-        (direct match / dependency / dependent / component sibling) and a
-        reason.}
-  \item \todo{\emph{Guard}: \tool{propose\_placement} before writing;
-        \tool{preview\_impact} before a cross-component import;
-        \tool{check\_architecture} after the edit.}
-  \item \todo{\emph{Gate}: the identical check as a pre-commit hook and in CI,
-        with the conformance PR comment.}
-  \item \todo{\emph{Self-application}: \arcade{} analyses itself in its own CI. At
-        v0.3.0: 76 source files, 407 entities, 228 edges, 11 recovered
-        components, 4 smells, with \tool{.arcade/baseline.json} committed on
-        every default-branch push so drift is caught against the last good
-        state. Cheap, honest, and memorable -- keep it.}
-\end{enumerate}
+\paragraph*{Setup}
+\tool{pip install arcade-agent[mcp,languages]} installs the library and the
+\tool{arcade-mcp} console script, which the agent launches over stdio. No
+project configuration is required to start reading a codebase; the guardrail
+additionally needs an \tool{architecture.spec.json}, which \tool{init\_spec}
+scaffolds from a template (layered, hexagonal, clean or MVC) or from a
+one-paragraph description of intent.
+
+\paragraph*{Understand}
+The agent's first question about an unfamiliar repository is what is in it.
+\tool{summarize} answers with the package tree, dependency hotspots, entry
+points and entity-kind counts in a single call. On \arcade{} itself that
+response is \textbf{911 tokens}. Reading the same source directly is roughly
+\textbf{137{,}700 tokens} --- a hundred and fifty times more, and most of it
+irrelevant to the question actually asked.
+
+\paragraph*{Target}
+Next the agent needs to know what to read. Given the task \emph{``add a Ruby
+language parser''}, \tool{context\_for\_task} returns 14 ranked files in 3{,}615
+tokens, each with a role and a reason. The four highest-scoring are the existing
+Rust, Python, Kotlin and TypeScript parsers --- the files a contributor would in
+fact open to write a new one --- recovered without the word \emph{parser} ever
+being matched against a directory name. \todo{Ranking is lexical over entity
+names, packages and paths, boosted by component membership. It degrades when the
+task's vocabulary and the code's diverge; on a query phrased in terms the
+codebase does not use, the right file is still in the ranked set but not at the
+top. One sentence, honest, and worth more than the space it costs.}
+
+\paragraph*{Guard}
+Before writing, the agent calls \tool{propose\_placement} with a description of
+what it is about to add and receives the component it belongs in together with
+what that component may depend on. Before a cross-component import it calls
+\tool{preview\_impact}, which reports the edges the change would introduce and
+whether any violates the spec --- while the change is still hypothetical.
+Fig.~\ref{fig:transcript} shows the moment that matters: the agent is told the
+edge would violate, and revises its plan instead of its code.
+
+\paragraph*{Gate}
+After the edit, \tool{check\_architecture} returns a verdict, each violation
+carrying the spec's own rationale and a concrete fix. The identical engine runs
+as a pre-commit hook and in CI, where \tool{--fail-on error} exits non-zero and
+the findings are posted to the pull request.
+
+\paragraph*{Self-application}
+\arcade{} analyses itself on every push. At v0.3.0 that run reports 76 source
+files, 407 entities, 228 edges, 11 recovered components and 4 smells, and
+commits \tool{.arcade/baseline.json} so the next run is compared against the
+last good state rather than against nothing. The published report is the same
+HTML artifact the \tool{visualize} tool produces for any project.
 
 \begin{figure}[t]
-\begin{lstlisting}[caption={},label={},captionpos=b]
-TODO -- replace with a REAL captured session, not a mock-up.
-Reviewers can tell the difference.
+\begin{lstlisting}
+> propose_placement("Redis cache for cluster results")
+  component: clustering
+  may depend on: domain
 
-The money shot is the agent calling preview_impact,
-being told the edge would violate, and changing its plan:
+> preview_impact(from="visualization", to="clustering")
+  WOULD VIOLATE
+  forbidden-dependency: visualization -> clustering
+  why: "visualization must not drive analysis"
+  fix: expose the result through the domain layer
 
-  > preview_impact(from="api", to="store")
-  WOULD VIOLATE: forbidden-dependency api -> store
-    ("API must go through the service layer")
-  > propose_placement("order totals")
-  component: service  (may depend on: domain, store)
+> check_architecture()
+  PASS  0 errors  0 new smells vs baseline
 \end{lstlisting}
   \caption{An agent changing course before writing the code.}
   \label{fig:transcript}
 \end{figure}
 
 % -----------------------------------------------------------------------------
-% TABLE I -- COMPLETE. All 19 tool names verified against origin/main @ 1b3532b
-% (v0.3.0) via arcade-agent-site/docs/content-facts.md. Only the one-line
-% descriptions remain to be written.
-% NOTE: 19 is the count of MCP-registered tools (@server.tool()). Only 15
-% functions carry @tool -- ingest and parse are plain functions exposed over
-% MCP. Never place "19" next to a number derived from list_tools(); a reviewer
-% who pip-installs and counts will find the mismatch. Say which surface you mean.
+% All 19 names verified against origin/main @ 1b3532b (v0.3.0).
+% NOTE: 19 counts MCP-registered tools (@server.tool()). Only 15 functions carry
+% @tool -- ingest and parse are plain functions exposed over MCP. Never put "19"
+% next to a number derived from list_tools(); say which surface you mean.
 % -----------------------------------------------------------------------------
 \begin{table}[t]
   \centering
@@ -330,9 +407,17 @@ being told the edge would violate, and changing its plan:
     \bottomrule
   \end{tabular}
   \\[2pt]
-  \todo{If space runs short, collapse this to a running two-column list --
-        cut-list item 2.}
+  \todo{SPACE: Sections III--V now carry two tables and two figures. This is the
+        first thing to cut (outline cut-list item 2) --- the measured budget
+        table earns its space, an inventory does not. Collapse to a running
+        two-column list in the text, or drop it.}
 \end{table}
+
+\todo{FIGURE 3 above is illustrative and MUST be replaced with a real captured
+session before submission. The shape and the tool names are accurate, but the
+transcript itself is reconstructed, and reviewers can tell. Capture it on
+\tool{arcade\_core}, where the guardrail has already been verified to return
+exactly this class of finding.}
 
 %==============================================================================
 \section{Evidence It Works}

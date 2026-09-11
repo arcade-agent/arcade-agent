@@ -80,6 +80,37 @@ the code exists.
 
 ---
 
+## 3a. Drafting status (updated 2026-09-11)
+
+**Sections III and IV are drafted** in `paper.tex`. Everything else is still
+scaffolding.
+
+Measured against the budget in §3, III is over and IV is on target:
+
+| § | Budgeted | Drafted prose | + floats | Actual |
+|---|---:|---:|---:|---:|
+| III | 1.6 col | ~662 words (~1.5 col) | Fig. 2 + budget table (~0.85 col) | **~2.3 col** |
+| IV | 1.8 col | ~355 words (~0.8 col) | Fig. 3 + tool table (~0.9 col) | ~1.7 col |
+
+So **§III must lose roughly 0.7 column.** Cut in this order, before touching the
+argument:
+
+1. The `\todo`-marked paragraph on truncation coarseness (optional by design).
+2. The tool inventory table in §IV — the measured budget table earns its space,
+   an inventory does not. This is cut-list item 2 from §8.
+3. The caching paragraph in §III, down to one sentence.
+
+Sections III–V now carry two tables and two figures between them. In four pages
+inclusive of references, at least one of those four has to go.
+
+**Token figures are measured, not estimated.** `measure_budget.py` in this
+directory reproduces every number in §III and §IV against arcade-agent v0.3.0:
+63,586 tokens unreduced; 12,644 at a 16k budget; 6,468 at 8k; 216 at 4k;
+`summarize()` 911; `context_for_task` 3,615 over 14 files; reading `src/`
+directly ~137,746. Re-run it if the code changes — the numbers are load-bearing.
+
+---
+
 ## 4. Section-by-section
 
 ### I. Introduction (0.8 col)
