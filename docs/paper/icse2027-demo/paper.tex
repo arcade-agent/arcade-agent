@@ -111,40 +111,53 @@ checking, AI coding agents, Model Context Protocol
 
 %==============================================================================
 \section{Introduction}
-\secbudget{0.8 col}
 %==============================================================================
-\todo{Hook. Type checkers guard types, linters guard style, tests guard
-behavior -- nothing guards architecture while the code is being written. The
-framing already exists in arcade-analyze-skill/GUARDRAIL\_PLAN.md; tighten it,
-do not re-invent it.}
+Software engineering rests on an assumption so basic that it is rarely written
+down: the artifacts under discussion are ultimately produced by people. The
+discipline's vocabulary inherits that premise everywhere. Effort is denominated
+in the man-month~\cite{brooks1975mythical}; productivity was once counted in
+lines written per day. The unit has changed and the premise has not --- teams now
+compare the tokens their agents consume, a measure that captures activity rather
+than progress in exactly the way its predecessor did.
 
-\todo{Why it matters: architectural decay is measured and costly. Cite the decay
-and change-proneness line~\cite{le2018decay,le2021decay-predictor,le2015change}.}
+Coding agents have broken the assumption. An agent no longer completes a line;
+it plans a change, edits across files, runs the tests, and iterates. What was
+built on the premise that a person stands at every step --- the process, the
+review points, the tools, and the guarantees each was trusted to provide --- is
+now due for re-examination.
 
-\todo{Why existing tools do not fit the agent loop: batch, slow, human-facing,
-output measured in megabytes of HTML. An agent has a token budget and a latency
-budget. Post-hoc CI conformance tells the agent it was wrong after the fact, and
-a red X with no fix makes an agent thrash.}
+This paper takes up one instance: what keeps a system's structure coherent while
+that system is being built. Type checkers guard types, linters guard style, test
+suites guard behavior. All three sit inside the agent's loop, and an agent
+consults them continuously and cheaply. Nothing plays that role for
+architecture. Conformance checking is a mature idea~\cite{murphy1995reflexion,archunit},
+but it runs in continuous integration, after the code is written, addressed to a
+human reviewer. For an agent that is both too late and too blunt: the code
+already exists, and a failed check that carries no remedy produces thrashing
+rather than repair. Meanwhile the structural decay such a check is meant to
+catch is measurable and consequential, and predicts where defects and costly
+change will land~\cite{le2018decay,le2021decay-predictor}.
 
-\todo{State the claim in one sentence -- see OUTLINE.md Sec. 2. Then be explicit
-about what is NOT claimed: the recovery algorithms are prior
-work~\cite{tzerpos2000acdc,garcia2011arc,andritsos2004limbo,maqbool2004wca,laser2020arcade}.
-The contribution is the delivery vehicle. Saying this plainly is cheaper than
-having a reviewer discover it.}
+We present \arcade{}, a tool that moves architecture recovery, smell detection,
+decay metrics, and conformance checking inside the agent's loop. The analyses it
+performs are established; our contribution is making them something an agent can
+afford to call, and can call \emph{before} the code exists rather than after.
 
 \noindent\textbf{Contributions.}
 \begin{itemize}
-  \item \todo{An installable, framework-agnostic architecture-analysis library
-        (\tool{pip install arcade-agent}) with 7 language parsers and 5 recovery
-        algorithms.}
-  \item \todo{An MCP server exposing 19 tools with per-call \tool{max\_tokens}
-        budgeting and a session-handle protocol, so agents consume summaries,
-        not dumps.}
-  \item \todo{Four task-shaped context tools that answer an agent's actual
-        question instead of returning a graph.}
-  \item \todo{An executable architecture contract plus proactive guardrail
-        tools, with evidence that they eliminate a violation class an unaided
-        agent produces roughly one run in five on greenfield code.}
+  \item An installable, framework-agnostic architecture analysis library
+        (\tool{pip install arcade-agent}) with seven language parsers and five
+        recovery algorithms.
+  \item An MCP server exposing 19 tools with per-call token budgeting and a
+        session-handle protocol, so an agent consumes summaries rather than
+        dumps: \arcade{}'s own architecture costs 63{,}586 tokens in full and
+        911 through \tool{summarize}.
+  \item Four task-shaped context tools that answer the question an agent
+        actually has --- what should I read, what does this change break, what is
+        public --- instead of returning a graph.
+  \item An executable architecture contract and proactive guardrail tools, with
+        evidence that they eliminate a violation class an unaided agent
+        introduces in roughly one greenfield run in five.
 \end{itemize}
 
 %==============================================================================

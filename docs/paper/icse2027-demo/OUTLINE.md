@@ -80,34 +80,64 @@ the code exists.
 
 ---
 
-## 3a. Drafting status (updated 2026-09-11)
+## 3a. Drafting status (updated 2026-09-13)
 
-**Sections III and IV are drafted** in `paper.tex`. Everything else is still
-scaffolding.
+**Drafted:** §I, §III, §IV. **Scaffolding only:** §II, §V, §VI, §VII.
 
-Measured against the budget in §3, III is over and IV is on target:
+§I is written from the author's own framing: software engineering rests on an
+unstated assumption that artifacts are ultimately produced by people; the
+man-month and lines-per-day are that assumption showing through, and
+tokens-consumed is its current form; coding agents have broken the assumption,
+so what was built on it needs re-examination. The paper then narrows to one
+instance — nothing guards architecture while code is being written. Keep this
+frame: it is what makes the paper an argument rather than a feature tour.
 
-| § | Budgeted | Drafted prose | + floats | Actual |
+### Space: the paper is about one column over
+
+| § | Budget | Prose | Floats | Actual |
 |---|---:|---:|---:|---:|
-| III | 1.6 col | ~662 words (~1.5 col) | Fig. 2 + budget table (~0.85 col) | **~2.3 col** |
-| IV | 1.8 col | ~355 words (~0.8 col) | Fig. 3 + tool table (~0.9 col) | ~1.7 col |
+| Front matter | 0.5 | — | — | 0.5 |
+| I | 0.8 | ~312 w + list | — | **~0.95** |
+| II | 0.8 | not written | Fig. 1 | ~0.9 |
+| III | 1.6 | ~662 w | Fig. 2 + budget table | **~2.35** |
+| IV | 1.8 | ~355 w | Fig. 3 + tool table | ~1.75 |
+| V | 1.2 | not written | eval table | ~0.85 |
+| VI | 0.6 | not written | — | 0.6 |
+| VII | 0.4 | not written | — | 0.4 |
+| Refs | 0.7 | 15 entries | — | 0.7 |
+| | **8.0** | | | **~9.0** |
 
-So **§III must lose roughly 0.7 column.** Cut in this order, before touching the
-argument:
+**Roughly one column has to go**, and §III is where most of the overage is.
+Cut in this order, before touching any argument:
 
-1. The `\todo`-marked paragraph on truncation coarseness (optional by design).
-2. The tool inventory table in §IV — the measured budget table earns its space,
-   an inventory does not. This is cut-list item 2 from §8.
+1. The `\todo`-marked paragraph on truncation coarseness in §III (optional by
+   design).
+2. The 19-tool inventory table in §IV — the measured budget table earns its
+   space, an inventory does not. Collapse to a running list in the text.
 3. The caching paragraph in §III, down to one sentence.
+4. Figure 1, folding the scenario into §IV's walkthrough.
 
-Sections III–V now carry two tables and two figures between them. In four pages
-inclusive of references, at least one of those four has to go.
+Do not pay for the overage out of §V. The threats paragraph and the null result
+are what make the evaluation credible.
 
-**Token figures are measured, not estimated.** `measure_budget.py` in this
-directory reproduces every number in §III and §IV against arcade-agent v0.3.0:
-63,586 tokens unreduced; 12,644 at a 16k budget; 6,468 at 8k; 216 at 4k;
+### Measured, not estimated
+
+`measure_budget.py` reproduces every token figure in §III and §IV against
+v0.3.0: 63,586 tokens unreduced; 12,644 at a 16k budget; 6,468 at 8k; 216 at 4k;
 `summarize()` 911; `context_for_task` 3,615 over 14 files; reading `src/`
-directly ~137,746. Re-run it if the code changes — the numbers are load-bearing.
+directly ~137,746. Re-run it if the code changes — these numbers are
+load-bearing, and one of them is now in the contributions list.
+
+### Material deliberately left out of §I
+
+The source draft also covered identity and access management, and opened on a
+topical exchange between two public figures about mathematics and AI. Both were
+dropped: IAM is a different paper and would blur the contribution at the moment
+reviewers are deciding what it is, and the topical framing carries a personal
+register a tool paper cannot hold. One further claim — that software
+architecture venues have recently grown unusually active — is omitted only for
+want of a citation. With venue or submission counts to back it, it belongs in
+the first paragraph.
 
 ---
 
