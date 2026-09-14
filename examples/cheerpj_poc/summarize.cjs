@@ -1,0 +1,13 @@
+const fs = require('node:fs');
+const result = JSON.parse(fs.readFileSync('results.json', 'utf8'));
+console.log('## Runtime smoke — not Kotlin semantic analysis\n');
+console.log('| Measurement | Value |\n| --- | --- |');
+console.log(`| Native JVM process ms | ${result.native.map(r=>r.ms.toFixed(1)).join(' / ')} |`);
+console.log(`| CheerpJ initialization ms | ${result.cheerpj?.initMs?.toFixed(1) ?? 'failed'} |`);
+console.log(`| CheerpJ run ms | ${result.cheerpj?.runMs?.map(v=>v.toFixed(1)).join(' / ') ?? 'failed'} |`);
+console.log(`| Browser launch through three runs ms | ${result.browserLaunchToResultMs.toFixed(1)} |`);
+console.log(`| Java exit codes | ${JSON.stringify(result.cheerpj?.exits)} |`);
+console.log('\nFresh runner; no dependency cache restored. Installation is reported separately.');
+console.log('Further CheerpJ launches share a browser context; native launches use separate JVM processes.');
+console.log('Page network counter excludes possible worker traffic; not total download size. Peak RAM unmeasured.');
+if(result.timeoutError || result.cheerpj?.error) console.log(JSON.stringify(result));

@@ -1,0 +1,4 @@
+build/
+results*.json
+
+node_modules/

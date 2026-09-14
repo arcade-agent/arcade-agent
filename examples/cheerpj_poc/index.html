@@ -1,0 +1,20 @@
+<!doctype html><meta charset="utf-8"><title>CheerpJ runtime probe</title>
+<script>window.started = performance.now();</script>
+<script src="https://cjrtnc.leaningtech.com/4.3/loader.js"></script>
+<script>
+(async () => {
+  try {
+    await cheerpjInit({version:17, status:"none"});
+    const initialized = performance.now();
+    const exits = [];
+    const runs = [];
+    for (let i = 0; i < 3; i++) {
+      const start = performance.now();
+      exits.push(await cheerpjRunMain("Probe", "/app/build/probe.jar", "/app/build/MainActivity.kt"));
+      runs.push(performance.now() - start);
+    }
+    window.result = {initMs:initialized-window.started, runMs:runs, exits,
+      totalMs:performance.now()-window.started};
+  } catch(error) { window.result = {error:String(error), stack:error.stack}; }
+})();
+</script>

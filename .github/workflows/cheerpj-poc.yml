@@ -1,0 +1,62 @@
+name: CheerpJ runtime PoC
+on:
+  push:
+    branches: [codex/cheerpj-ci-poc]
+    paths: ['examples/cheerpj_poc/**', '.github/workflows/cheerpj-poc.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        sample: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start setup timer
+        run: echo "POC_START=$(date +%s)" >> "$GITHUB_ENV"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install pinned browser tooling (no cache restore)
+        working-directory: examples/cheerpj_poc
+        run: |
+          npm ci --ignore-scripts
+          npx playwright install --with-deps chromium
+      - name: Build probe
+        working-directory: examples/cheerpj_poc
+        run: |
+          mkdir -p build
+          javac --release 17 -d build Probe.java
+          jar --create --file build/probe.jar -C build Probe.class
+          cp MainActivity.kt build/MainActivity.kt
+          node --check run.cjs
+      - name: Run native and CheerpJ probe
+        working-directory: examples/cheerpj_poc
+        run: |
+          echo "Setup seconds: $(( $(date +%s) - POC_START ))" >> "$GITHUB_STEP_SUMMARY"
+          java -version 2> build/java-version.txt
+          node -p 'JSON.stringify({node:process.version,platform:process.platform,arch:process.arch})' > build/environment.json
+          node run.cjs > results.json
+      - name: Report measurements
+        if: always()
+        working-directory: examples/cheerpj_poc
+        run: |
+          node summarize.cjs >> "$GITHUB_STEP_SUMMARY"
+          echo "Setup + probe + report seconds: $(( $(date +%s) - POC_START ))" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cheerpj-poc-${{ matrix.sample }}
+          path: |
+            examples/cheerpj_poc/results.json
+            examples/cheerpj_poc/build/java-version.txt
+            examples/cheerpj_poc/build/environment.json
+          retention-days: 14
