@@ -1,0 +1,58 @@
+name: Kotlin semantic compile PoC
+on:
+  push:
+    branches: [codex/cheerpj-ci-poc]
+    paths: ['examples/kotlin_semantic_poc/**', '.github/workflows/kotlin-semantic-poc.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  semantic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        sample: [1, 2]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start timer
+        run: echo "POC_START=$(date +%s)" >> "$GITHUB_ENV"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install verifier and browser without cache restore
+        run: |
+          pip install -e . tree-sitter-kotlin
+          cd examples/kotlin_semantic_poc
+          npm ci --ignore-scripts
+          npx playwright install --with-deps chromium
+      - name: Build compiler plugin and driver
+        run: |
+          examples/kotlin_semantic_poc/build.sh
+          du -cb examples/kotlin_semantic_poc/lib/*.jar | tail -1 > examples/kotlin_semantic_poc/build/jar-size.txt
+      - name: Compile and resolve on native JVM and CheerpJ
+        run: |
+          echo "Setup seconds: $(( $(date +%s) - POC_START ))" >> "$GITHUB_STEP_SUMMARY"
+          python examples/kotlin_semantic_poc/measure.py
+      - name: Verify semantic edges, diagnostics and graph enrichment
+        run: |
+          python examples/kotlin_semantic_poc/verify.py | tee examples/kotlin_semantic_poc/build/verification.json
+          cat examples/kotlin_semantic_poc/build/verification.json >> "$GITHUB_STEP_SUMMARY"
+          cat examples/kotlin_semantic_poc/results-memory.json >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: kotlin-semantic-${{ matrix.sample }}
+          path: |
+            examples/kotlin_semantic_poc/results*.json
+            examples/kotlin_semantic_poc/build/verification.json
+            examples/kotlin_semantic_poc/build/jar-size.txt
+          retention-days: 14

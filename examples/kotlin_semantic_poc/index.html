@@ -1,0 +1,12 @@
+<!doctype html><meta charset="utf-8"><title>Kotlin compiler on CheerpJ</title>
+<script>window.started=performance.now();</script>
+<script src="https://cjrtnc.leaningtech.com/4.3/loader.js"></script>
+<script>
+(async()=>{try {
+await cheerpjInit({version:17,status:"none"});
+const initMs=performance.now()-window.started;
+const start=performance.now();
+const exit=await cheerpjRunMain("SemanticProbe","/app/build/probe.jar:/app/lib/annotations-13.0.jar:/app/lib/kotlin-compiler-embeddable-2.0.21.jar:/app/lib/kotlin-daemon-embeddable-2.0.21.jar:/app/lib/kotlin-reflect-1.6.10.jar:/app/lib/kotlin-script-runtime-2.0.21.jar:/app/lib/kotlin-stdlib-2.0.21.jar:/app/lib/kotlinx-coroutines-core-jvm-1.6.4.jar:/app/lib/trove4j-1.0.20200330.jar","/app","/files/semantic-output");
+window.result={initMs,runMs:[performance.now()-start],exits:[exit]};
+} catch(e){window.result={error:String(e),stack:e.stack};}})();
+</script>
