@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 from dataclasses import replace
 from pathlib import Path
+from typing import TypedDict, cast
 
 from arcade_agent.algorithms.architecture import Architecture, Component
 from arcade_agent.algorithms.concern import detect_concern_overload
@@ -11,11 +12,34 @@ from arcade_agent.parsers.graph import Edge
 from arcade_agent.parsers.kotlin import KotlinParser
 
 
-def decode(text: str) -> dict:
+class Call(TypedDict):
+    caller: str
+    callee: str
+    callerSignature: str
+    calleeSignature: str
+    file: str
+    line: int
+    provenance: str
+
+
+class SemanticResult(TypedDict):
+    compileExit: str
+    diagnostics: str
+    invalidCompileExit: str
+    invalidDiagnostics: str
+    sourceCalls: list[Call]
+    calls: list[Call]
+    compileMs: float
+
+
+def decode(text: str) -> SemanticResult:
     marker = "SEMANTIC_RESULT "
     start = text.index(marker) + len(marker)
     result, _ = json.JSONDecoder().raw_decode(text[start:])
-    return result
+    # JSON from our pinned Java driver is the boundary; assertions below validate evidence.
+    if not isinstance(result, dict):
+        raise ValueError("Compiler result must be an object")
+    return cast(SemanticResult, result)
 
 
 def main() -> None:
