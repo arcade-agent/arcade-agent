@@ -34,8 +34,8 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/lemduc/arcade-agent"
-Repository = "https://github.com/lemduc/arcade-agent"
+Homepage = "https://github.com/arcade-agent/arcade-agent"
+Repository = "https://github.com/arcade-agent/arcade-agent"
 Documentation = "https://lemduc.github.io/arcade-agent/"
 
 [project.optional-dependencies]

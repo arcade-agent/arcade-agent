@@ -92,4 +92,4 @@ on the release page for details.
 
 ## 0.2.0 and earlier
 
-See GitHub releases: https://github.com/lemduc/arcade-agent/releases
+See GitHub releases: https://github.com/arcade-agent/arcade-agent/releases
