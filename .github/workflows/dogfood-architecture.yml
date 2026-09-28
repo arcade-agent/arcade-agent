@@ -1,0 +1,28 @@
+name: Dogfood Architecture Analysis
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    - cron: '0 3 1 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dogfood:
+    name: Self-Dogfooding Architecture Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Analyze Architecture (Dogfooding)
+        uses: arcade-agent/analyze-action@afc7da3f846418fe8136f42243c987a48ff9a32a # v1.0.0
+        with:
+          source-path: 'src'
+          output-dir: 'public'
+          fail-on-smells: false
