@@ -10,8 +10,8 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pull-requests: write  # Enable PR architectural summary comments
+  contents: write       # Cho phép post comment trực tiếp lên commit khi push
+  pull-requests: write  # Cho phép post/update comment khi có PR
   issues: write
 
 jobs:
@@ -23,9 +23,11 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Analyze Architecture (Dogfooding)
-        uses: arcade-agent/analyze-action@1972f1cee124a8e81a4f82df6018a75ab8f41b47 # v1.1.0
+        uses: arcade-agent/analyze-action@a9e2eac61c8c356a3f81a8d385785511aa825472 # v1.2.0
         with:
           source-path: 'src'
           output-dir: 'public'
           post-pr-comment: true
+          post-commit-comment: true
+          commit-comment-branch-regex: '^(main|master)$'
           fail-on-smells: false
