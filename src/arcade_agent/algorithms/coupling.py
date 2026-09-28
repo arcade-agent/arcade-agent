@@ -37,6 +37,55 @@ BALANCED_SCORE_WEIGHTS = {
 }
 
 
+def graph_quality_context(dep_graph: DependencyGraph) -> dict[str, object] | None:
+    """Return compact dependency-resolution coverage for metric consumers."""
+    raw = dep_graph.metadata.get("dependency_resolution")
+    if not isinstance(raw, dict) or not raw:
+        return None
+
+    summaries: dict[str, dict[str, object]] = {}
+    qualified = False
+    fields = (
+        "import_specifiers",
+        "resolved_local",
+        "external",
+        "unresolved_local",
+        "linked_local",
+        "unlinked_local",
+        "local_resolution_rate",
+        "local_edge_rate",
+    )
+    for language, value in sorted(raw.items()):
+        if not isinstance(language, str) or not isinstance(value, dict):
+            continue
+        configuration_errors = value.get("configuration_errors")
+        error_count = len(configuration_errors) if isinstance(configuration_errors, list) else 0
+        summary = {field: value[field] for field in fields if field in value}
+        summary["configuration_error_count"] = error_count
+        language_qualified = value.get("metrics_qualified") is True
+        summary["metrics_qualified"] = language_qualified
+        summaries[language] = summary
+        qualified = qualified or language_qualified
+
+    if not summaries:
+        return None
+    return {
+        "status": "qualified" if qualified else "complete_for_discovered_imports",
+        "dependency_resolution": summaries,
+    }
+
+
+def _attach_graph_quality(
+    metrics: list[MetricResult], dep_graph: DependencyGraph
+) -> list[MetricResult]:
+    quality = graph_quality_context(dep_graph)
+    if quality is None:
+        return metrics
+    for metric in metrics:
+        metric.details = {**metric.details, "graph_quality": quality}
+    return metrics
+
+
 def _clamp(value: float) -> float:
     """Clamp a floating-point score to the [0, 1] range."""
     return max(0.0, min(1.0, value))
@@ -156,7 +205,7 @@ def _component_dependency_profiles(
 def _score_drivers(signals: dict[str, float]) -> dict[str, list[dict[str, float | str]]]:
     """Return the strongest and weakest quality drivers for reporting."""
     ordered = sorted(signals.items(), key=lambda item: (item[1], item[0]))
-    risks = [
+    risks: list[dict[str, float | str]] = [
         {
             "name": name,
             "value": _round_score(value),
@@ -164,7 +213,7 @@ def _score_drivers(signals: dict[str, float]) -> dict[str, list[dict[str, float 
         }
         for name, value in ordered[:3]
     ]
-    strengths = [
+    strengths: list[dict[str, float | str]] = [
         {
             "name": name,
             "value": _round_score(value),
@@ -447,14 +496,17 @@ def compute_all_metrics(
     architecture: Architecture, dep_graph: DependencyGraph
 ) -> list[MetricResult]:
     """Compute all single-version architecture quality metrics."""
-    return [
-        compute_rci(architecture, dep_graph),
-        compute_turbo_mq(architecture, dep_graph),
-        compute_basic_mq(architecture, dep_graph),
-        compute_intra_connectivity(architecture, dep_graph),
-        compute_inter_connectivity(architecture, dep_graph),
-        compute_two_way_pair_ratio(architecture, dep_graph),
-    ]
+    return _attach_graph_quality(
+        [
+            compute_rci(architecture, dep_graph),
+            compute_turbo_mq(architecture, dep_graph),
+            compute_basic_mq(architecture, dep_graph),
+            compute_intra_connectivity(architecture, dep_graph),
+            compute_inter_connectivity(architecture, dep_graph),
+            compute_two_way_pair_ratio(architecture, dep_graph),
+        ],
+        dep_graph,
+    )
 
 
 def compute_balanced_scores(
@@ -565,6 +617,9 @@ def compute_balanced_scores(
         "group": "Balanced / Principle-aligned Scores",
         "higher_is_better": True,
     }
+    graph_quality = graph_quality_context(dep_graph)
+    if graph_quality is not None:
+        score_details["graph_quality"] = graph_quality
     derived_metrics = [
         MetricResult(
             name="DependencyHealth",

@@ -101,6 +101,45 @@ def test_cache_key_tracks_cargo_manifests_for_composite_language_keys(tmp_projec
     assert k1 != k2
 
 
+@pytest.mark.parametrize(
+    ("configuration_name", "language"),
+    [
+        ("tsconfig.base.json", "typescript"),
+        ("package.json", "typescript|excl:default"),
+        ("jsconfig.json", "typescript"),
+    ],
+)
+def test_cache_key_tracks_typescript_resolution_configuration(
+    tmp_project, configuration_name, language
+):
+    source = tmp_project / "src" / "app.ts"
+    source.write_text("export class App {}\n")
+    configuration = tmp_project / configuration_name
+    configuration.write_text('{"compilerOptions":{"baseUrl":"src"}}')
+    files = [str(source)]
+    first = cache_key(str(tmp_project), language, files)
+
+    configuration.write_text('{"compilerOptions":{"baseUrl":"lib"}}')
+    newer = configuration.stat().st_mtime + 2
+    os.utime(configuration, (newer, newer))
+    second = cache_key(str(tmp_project), language, files)
+
+    assert first != second
+
+
+@pytest.mark.parametrize("extension", [".mjs", ".cjs"])
+def test_cache_key_tracks_all_javascript_parser_extensions(tmp_project, extension):
+    source = tmp_project / "src" / f"app{extension}"
+    source.write_text("export class Before {}\n")
+    first = cache_key(str(tmp_project), "typescript", None)
+    source.write_text("export class After {}\n")
+    newer = source.stat().st_mtime + 2
+    os.utime(source, (newer, newer))
+    second = cache_key(str(tmp_project), "typescript", None)
+
+    assert first != second
+
+
 def test_cache_key_changes_with_exclude_tests(tmp_project):
     """Rust graphs differ by exclude_tests, so cached graphs must not collide."""
     k1 = cache_key(str(tmp_project), "rust", None)

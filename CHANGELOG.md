@@ -5,6 +5,17 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Fixed
+
+- TypeScript/JavaScript local bare imports are no longer silently treated as external.
+  The parser resolves inherited JSONC `baseUrl`/`paths` aliases and npm workspace package
+  manifests, tracks their non-source files in the parse cache key, and reports
+  resolved/external/unresolved plus linked/unlinked coverage. Architecture metric details
+  now carry a visible graph-quality qualifier when discovered local dependencies remain
+  incomplete, without changing the numeric formulas.
+
 ## 0.3.0 — 2026-08-21
 
 Also in this release: **Rust** parser support, **polyglot multi-language

@@ -2,10 +2,12 @@
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TypedDict
 
 from jinja2 import Template
 
 from arcade_agent.algorithms.architecture import Architecture
+from arcade_agent.algorithms.coupling import graph_quality_context
 from arcade_agent.algorithms.metrics import MetricResult
 from arcade_agent.algorithms.smells import SmellInstance
 from arcade_agent.exporters.mermaid import (
@@ -94,6 +96,11 @@ REPORT_TEMPLATE = Template("""\
         }
         .metric-card .value { font-size: 1.4rem; font-weight: 700; color: #059669; }
         .metric-card .name { font-size: 0.8rem; color: #666; }
+        .quality-warning {
+            border-left: 4px solid #d97706; padding: 1rem 1.25rem; margin: 1rem 0 2rem;
+            background: #fffbeb; border-radius: 0 8px 8px 0; color: #78350f;
+        }
+        .quality-warning code { color: #92400e; }
         .concern-tag {
             display: inline-block; background: #e0e7ff; color: #3730a3;
             font-size: 0.75rem; padding: 0.2rem 0.6rem; border-radius: 99px;
@@ -134,6 +141,22 @@ REPORT_TEMPLATE = Template("""\
             <div class="label">Smells</div>
         </div>
     </div>
+
+    {% if graph_quality and graph_quality.status == "qualified" %}
+    <div class="quality-warning">
+        <strong>Qualified dependency-graph metrics.</strong>
+        Values below were computed with incomplete discovered local-import coverage;
+        interpret them as directional signals, not a complete architecture assessment.
+        {% for language, summary in graph_quality.dependency_resolution.items() %}
+        <div><code>{{ language }}</code>:
+            {{ summary.resolved_local | default(0) }} resolved,
+            {{ summary.unresolved_local | default(0) }} unresolved,
+            {{ summary.linked_local | default(0) }} linked,
+            {{ summary.unlinked_local | default(0) }} unlinked.
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
 
     {% if metric_groups %}
     <h2 id="metrics">Quality Metrics</h2>
@@ -267,6 +290,7 @@ def export_html(
         grouped_metrics.setdefault(group_name, []).append(metric)
     for title, grouped in grouped_metrics.items():
         metric_groups.append({"title": title, "metrics": grouped})
+    graph_quality = graph_quality_context(dep_graph)
 
     html = REPORT_TEMPLATE.render(
         repo_name=repo_name,
@@ -281,6 +305,7 @@ def export_html(
         components=architecture.components,
         smells=smells,
         metric_groups=metric_groups,
+        graph_quality=graph_quality,
         packages=packages,
         concerns=concerns or {},
     )
@@ -302,6 +327,16 @@ class AlgorithmResult:
     smells: list[SmellInstance]
     metrics: list[MetricResult]
     concerns: dict[str, list[str]]
+
+
+class _EnrichedAlgorithmResult(TypedDict):
+    algorithm: str
+    architecture: Architecture
+    smells: list[SmellInstance]
+    metrics: list[MetricResult]
+    metrics_dict: dict[str, float]
+    concerns: dict[str, list[str]]
+    mermaid: str
 
 
 COMPARISON_TEMPLATE = Template("""\
@@ -384,6 +419,11 @@ COMPARISON_TEMPLATE = Template("""\
         }
         .metric-card .value { font-size: 1.4rem; font-weight: 700; color: #059669; }
         .metric-card .name { font-size: 0.8rem; color: #666; }
+        .quality-warning {
+            border-left: 4px solid #d97706; padding: 1rem 1.25rem; margin: 1rem 0 2rem;
+            background: #fffbeb; border-radius: 0 8px 8px 0; color: #78350f;
+        }
+        .quality-warning code { color: #92400e; }
         .concern-tag {
             display: inline-block; background: #e0e7ff; color: #3730a3;
             font-size: 0.75rem; padding: 0.2rem 0.6rem; border-radius: 99px;
@@ -442,6 +482,22 @@ COMPARISON_TEMPLATE = Template("""\
         </div>
         {% endfor %}
     </div>
+
+    {% if graph_quality and graph_quality.status == "qualified" %}
+    <div class="quality-warning">
+        <strong>Qualified dependency-graph metrics.</strong>
+        Values below were computed with incomplete discovered local-import coverage;
+        interpret them as directional signals, not a complete architecture assessment.
+        {% for language, summary in graph_quality.dependency_resolution.items() %}
+        <div><code>{{ language }}</code>:
+            {{ summary.resolved_local | default(0) }} resolved,
+            {{ summary.unresolved_local | default(0) }} unresolved,
+            {{ summary.linked_local | default(0) }} linked,
+            {{ summary.unlinked_local | default(0) }} unlinked.
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
 
     <h2 id="metrics-compare">Metrics Comparison</h2>
     <table>
@@ -569,17 +625,17 @@ def export_comparison_html(
         Path to the generated HTML file.
     """
     # Build mermaid diagrams and metrics dicts for each result
-    enriched = []
-    for r in results:
-        mermaid = build_mermaid_diagram(r.architecture, dep_graph)
-        metrics_dict = {m.name: m.value for m in r.metrics}
+    enriched: list[_EnrichedAlgorithmResult] = []
+    for result in results:
+        mermaid = build_mermaid_diagram(result.architecture, dep_graph)
+        metrics_dict = {metric.name: metric.value for metric in result.metrics}
         enriched.append({
-            "algorithm": r.algorithm,
-            "architecture": r.architecture,
-            "smells": r.smells,
-            "metrics": r.metrics,
+            "algorithm": result.algorithm,
+            "architecture": result.architecture,
+            "smells": result.smells,
+            "metrics": result.metrics,
             "metrics_dict": metrics_dict,
-            "concerns": r.concerns,
+            "concerns": result.concerns,
             "mermaid": mermaid,
         })
 
@@ -599,6 +655,7 @@ def export_comparison_html(
         num_edges=dep_graph.num_edges,
         results=enriched,
         metric_names=metric_names,
+        graph_quality=graph_quality_context(dep_graph),
         packages=packages,
     )
 
@@ -695,6 +752,11 @@ EVOLUTION_TEMPLATE = Template("""\
         .full-width { grid-column: 1 / -1; }
         .mermaid { text-align: center; }
         .link { margin-top: 0.75rem; }
+        .quality-warning {
+            border-left: 4px solid #d97706; padding: 1rem 1.25rem; margin: 1rem 0 2rem;
+            background: #fffbeb; border-radius: 0 8px 8px 0; color: #78350f;
+        }
+        .quality-warning code { color: #92400e; }
         @media (max-width: 960px) {
             .grid { grid-template-columns: 1fr; }
         }
@@ -721,6 +783,22 @@ EVOLUTION_TEMPLATE = Template("""\
         </div>
         {% endfor %}
     </div>
+
+    {% if graph_quality and graph_quality.status == "qualified" %}
+    <div class="quality-warning">
+        <strong>Qualified dependency-graph metrics.</strong>
+        Current values were computed with incomplete discovered local-import coverage;
+        interpret them as directional signals, not a complete architecture assessment.
+        {% for language, summary in graph_quality.dependency_resolution.items() %}
+        <div><code>{{ language }}</code>:
+            {{ summary.resolved_local | default(0) }} resolved,
+            {{ summary.unresolved_local | default(0) }} unresolved,
+            {{ summary.linked_local | default(0) }} linked,
+            {{ summary.unlinked_local | default(0) }} unlinked.
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
 
     <div class="grid" id="diagrams">
         <div class="card">
@@ -832,6 +910,7 @@ def export_evolution_html(report: dict, output_path: Path) -> Path:
         dependency_rows=report["dependency_rows"],
         baseline_mermaid=build_snapshot_mermaid(report.get("baseline")),
         current_mermaid=build_snapshot_mermaid(report["current"]),
+        graph_quality=report.get("graph_quality"),
         run_url=report.get("run_url", ""),
     )
     output_path.write_text(html)

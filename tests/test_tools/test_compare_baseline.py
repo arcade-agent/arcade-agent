@@ -67,9 +67,42 @@ def test_build_report_payload_tracks_component_and_method_deltas():
     assert "+2" in report["component_rows"][0]["methods"]
 
 
+def test_comparison_comment_surfaces_qualified_graph_metrics():
+    current = _snapshot("def5678", "Core", 1, 2)
+    current["graph_quality"] = {
+        "status": "qualified",
+        "dependency_resolution": {
+            "typescript": {
+                "resolved_local": 12,
+                "unresolved_local": 3,
+                "linked_local": 9,
+                "unlinked_local": 3,
+            }
+        },
+    }
+
+    report = build_report_payload(current, None)
+    comment = build_comment(current, None)
+
+    assert report["graph_quality"] == current["graph_quality"]
+    assert "Qualified dependency-graph metrics" in comment
+    assert "`typescript`: 12 resolved / 3 unresolved; 9 linked / 3 unlinked." in comment
+
+
 def test_export_evolution_html_writes_report(tmp_path: Path):
     baseline = _snapshot("abc1234", "Core", 1, 1)
     current = _snapshot("def5678", "Core", 1, 2)
+    current["graph_quality"] = {
+        "status": "qualified",
+        "dependency_resolution": {
+            "typescript": {
+                "resolved_local": 4,
+                "unresolved_local": 1,
+                "linked_local": 3,
+                "unlinked_local": 1,
+            }
+        },
+    }
     report = build_report_payload(current, baseline)
 
     output = tmp_path / "comparison.html"
@@ -79,6 +112,8 @@ def test_export_evolution_html_writes_report(tmp_path: Path):
     assert "Architecture Evolution Report" in content
     assert "Core" in content
     assert "Methods" in content
+    assert "Qualified dependency-graph metrics" in content
+    assert "1 unresolved" in content
 
 
 def test_export_html_metrics_nav_uses_metric_groups(tmp_path: Path):

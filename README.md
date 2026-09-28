@@ -132,7 +132,8 @@ smell burden, or another architectural pressure.
 - Java (full support)
 - Python (full support)
 - C/C++ (full support)
-- TypeScript/JavaScript (full support)
+- TypeScript/JavaScript (structural support via optional `[languages]` extra; static ES
+  imports, inheritance, `tsconfig`/`jsconfig` paths, and npm workspaces)
 - Go (full support)
 - Kotlin (structural support via optional `[languages]` extra; import + inheritance graph)
 - Rust (structural support via optional `[languages]` extra; structs, enums, unions, traits,
@@ -145,6 +146,15 @@ drops `#[cfg(test)]` items — including `cfg(all(test, ...))` / `cfg(any(test, 
 inner `#![cfg(test)]` files and module bodies, the file behind an out-of-line
 `#[cfg(test)] mod helpers;`, and `#[cfg(test)] use ...` dev-dependency imports.
 Pass `exclude_tests=False` to `ingest`/`parse`/`analyze` to keep them.
+
+For TypeScript/JavaScript, local import resolution is explicit rather than
+best-effort-and-silent. `DependencyGraph.metadata["dependency_resolution"]["typescript"]`
+reports resolved, external, unresolved-local, linked, and unlinked specifier counts plus
+coverage rates and bounded diagnostics. Metric details repeat a compact `graph_quality`
+summary and use status `qualified` whenever configuration failed or a discovered local
+import could not be resolved or linked; numeric formulas remain unchanged. The structural
+parser does not claim compiler-equivalent coverage for dynamic `import()`, CommonJS
+`require()`, custom resolver plugins, or every conditional-exports mode.
 
 ## Example: ARCADE Core
 

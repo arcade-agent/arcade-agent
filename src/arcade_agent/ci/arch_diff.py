@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from arcade_agent.algorithms.architecture import Architecture
-from arcade_agent.algorithms.coupling import compute_balanced_scores
+from arcade_agent.algorithms.coupling import compute_balanced_scores, graph_quality_context
 from arcade_agent.algorithms.metrics import MetricResult
 from arcade_agent.algorithms.smells import SmellInstance
 from arcade_agent.ci.graph_filter import (
@@ -115,6 +115,28 @@ def build_report(
     ]
     if baseline_note:
         lines.extend([f"> {baseline_note}", ""])
+
+    graph_quality = graph_quality_context(graph)
+    if graph_quality and graph_quality.get("status") == "qualified":
+        lines.extend(
+            [
+                "> ⚠️ **Qualified dependency-graph metrics:** discovered local-import "
+                "coverage is incomplete; treat scores as directional signals, not a "
+                "complete architecture assessment.",
+            ]
+        )
+        resolution = graph_quality.get("dependency_resolution")
+        if isinstance(resolution, dict):
+            for language, summary in sorted(resolution.items()):
+                if not isinstance(summary, dict):
+                    continue
+                lines.append(
+                    f"> `{language}`: {summary.get('resolved_local', 0)} resolved / "
+                    f"{summary.get('unresolved_local', 0)} unresolved; "
+                    f"{summary.get('linked_local', 0)} linked / "
+                    f"{summary.get('unlinked_local', 0)} unlinked."
+                )
+        lines.append("")
 
     # ── Drift table (only when baseline exists) ──────────────────────────
     if drift and baseline:

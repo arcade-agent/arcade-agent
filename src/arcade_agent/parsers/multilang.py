@@ -223,6 +223,26 @@ def _disambiguate_fqn(fqn: str, language: str, taken: dict[str, Entity]) -> str:
     return candidate
 
 
+def _dependency_resolution_metadata(
+    graphs: tuple[DependencyGraph, ...],
+) -> dict[str, dict[str, Any]]:
+    """Preserve language-keyed parser resolution metadata across graph union."""
+    by_language: dict[str, Any] = {}
+    for graph in graphs:
+        raw = graph.metadata.get("dependency_resolution")
+        if not isinstance(raw, dict):
+            continue
+        for language, summary in raw.items():
+            if language in by_language and by_language[language] != summary:
+                logger.warning(
+                    "Conflicting dependency-resolution metadata for %s; keeping first",
+                    language,
+                )
+                continue
+            by_language[language] = summary
+    return {"dependency_resolution": by_language} if by_language else {}
+
+
 def merge_and_relink(*graphs: DependencyGraph) -> DependencyGraph:
     """Union graphs then relink edges across the combined entity set.
 
@@ -316,11 +336,14 @@ def merge_and_relink(*graphs: DependencyGraph) -> DependencyGraph:
             packages.setdefault(pkg, []).extend(renamed.get(f, f) for f in fqns)
 
     packages = {pkg: list(dict.fromkeys(fqns)) for pkg, fqns in packages.items()}
-    metadata: dict[str, Any] = {
-        "fqn_collisions": same_family_collisions + cross_family_collisions,
-        "fqn_collisions_same_family": same_family_collisions,
-        "fqn_collisions_cross_family": cross_family_collisions,
-    }
+    metadata: dict[str, Any] = _dependency_resolution_metadata(graphs)
+    metadata.update(
+        {
+            "fqn_collisions": same_family_collisions + cross_family_collisions,
+            "fqn_collisions_same_family": same_family_collisions,
+            "fqn_collisions_cross_family": cross_family_collisions,
+        }
+    )
     if collision_details:
         metadata["fqn_collision_details"] = collision_details
     return relink_edges(

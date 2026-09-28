@@ -220,6 +220,26 @@ def test_merge_reports_zero_collisions_when_there_are_none():
     assert "fqn_collision_details" not in merged.metadata
 
 
+def test_merge_preserves_language_keyed_dependency_resolution_metadata():
+    resolution = {
+        "import_specifiers": 2,
+        "resolved_local": 1,
+        "external": 0,
+        "unresolved_local": 1,
+        "metrics_qualified": True,
+    }
+    typescript = DependencyGraph(
+        entities={"web.App": _entity("web.App", "typescript")},
+        metadata={"dependency_resolution": {"typescript": resolution}},
+    )
+    java = DependencyGraph(entities={"server.App": _entity("server.App", "java")})
+
+    merged = merge_and_relink(java, typescript)
+
+    assert merged.metadata["dependency_resolution"] == {"typescript": resolution}
+    assert merged.metadata["fqn_collisions"] == 0
+
+
 def test_polyglot_fixture_has_no_fabricated_cross_language_edges(fixtures_dir: Path):
     """End-to-end reproduction of the review's Python+Java fabrication."""
     root = fixtures_dir / "python_java_mixed"

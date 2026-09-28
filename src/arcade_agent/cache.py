@@ -22,8 +22,39 @@ def _cache_dir(project_root: Path) -> Path:
 
 _SOURCE_SUFFIXES = {
     ".java", ".py", ".c", ".cpp", ".h", ".hpp", ".ts", ".tsx", ".js", ".jsx",
-    ".go", ".kt", ".kts", ".rs",
+    ".mjs", ".cjs", ".go", ".kt", ".kts", ".rs",
 }
+
+_TYPESCRIPT_SOURCE_SUFFIXES = {".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"}
+_CONFIG_SCAN_EXCLUDED_DIRS = {
+    ".arcade-cache",
+    ".git",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".venv",
+    "build",
+    "coverage",
+    "dist",
+    "node_modules",
+    "target",
+}
+
+
+def _typescript_configuration_files(root: Path) -> set[str]:
+    """Return manifests/configs that can change TypeScript graph identity."""
+    configuration_files: set[str] = set()
+    for directory, directories, filenames in os.walk(root):
+        directories[:] = sorted(
+            name for name in directories if name not in _CONFIG_SCAN_EXCLUDED_DIRS
+        )
+        for filename in filenames:
+            if (
+                filename in {"package.json", "jsconfig.json"}
+                or filename.startswith("tsconfig") and filename.endswith(".json")
+            ):
+                configuration_files.add(str(Path(directory) / filename))
+    return configuration_files
 
 
 def cache_key(
@@ -36,7 +67,9 @@ def cache_key(
 
     The key is a SHA-256 hash of the sorted file paths and their modification
     times, ensuring the cache is automatically invalidated when any source file
-    changes.
+    changes. Non-source resolver inputs are included for languages whose graph
+    identity depends on them (Cargo manifests for Rust; package/tsconfig files
+    for TypeScript/JavaScript).
 
     Args:
         source_path: Root directory of the project.
@@ -72,6 +105,12 @@ def cache_key(
         file_paths.update(
             str(manifest) for manifest in root.rglob("Cargo.toml") if manifest.is_file()
         )
+
+    tracks_typescript = (language is not None and "typescript" in language) or any(
+        Path(file_path).suffix in _TYPESCRIPT_SOURCE_SUFFIXES for file_path in file_paths
+    )
+    if tracks_typescript:
+        file_paths.update(_typescript_configuration_files(root))
 
     for fp in sorted(file_paths):
         p = Path(fp)

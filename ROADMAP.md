@@ -40,7 +40,9 @@ Let agents ask "what do I need to read?" instead of reading everything.
 
 Handle real-world polyglot monorepos.
 
-- [x] **15. TypeScript/JS parser** — Shipped in #8 (`parsers/typescript.py`).
+- [x] **15. TypeScript/JS parser** — Shipped in #8 (`parsers/typescript.py`), with
+  configuration-aware local import resolution (`baseUrl`/`paths`, inherited JSONC configs,
+  npm workspaces) and graph-quality coverage metadata.
 - [x] **16a. Go parser** — Shipped alongside TS/JS in #8 (`parsers/go.py`).
 - [x] **16a2. Kotlin parser** — Shipped (`parsers/kotlin.py`) for JVM/Kotlin-first repos (e.g. embabel-agent).
 - [x] **16b. Rust parser** — Shipped (`parsers/rust.py`): modules, types, traits, functions,

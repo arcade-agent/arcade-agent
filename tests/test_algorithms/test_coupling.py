@@ -59,6 +59,49 @@ def test_all_metrics(sample_architecture, sample_graph):
     assert len(results) == 6
 
 
+def test_metrics_visibly_qualify_incomplete_dependency_resolution(
+    sample_architecture, sample_graph
+):
+    sample_graph.metadata["dependency_resolution"] = {
+        "typescript": {
+            "import_specifiers": 3,
+            "resolved_local": 1,
+            "external": 1,
+            "unresolved_local": 1,
+            "linked_local": 1,
+            "unlinked_local": 0,
+            "local_resolution_rate": 0.5,
+            "local_edge_rate": 1.0,
+            "configuration_errors": [],
+            "metrics_qualified": True,
+        }
+    }
+
+    metrics = compute_all_metrics(sample_architecture, sample_graph)
+    derived, _, _ = compute_balanced_scores(
+        sample_architecture,
+        sample_graph,
+        [],
+        metrics=metrics,
+    )
+
+    for metric in [*metrics, *derived]:
+        quality = metric.details["graph_quality"]
+        assert quality["status"] == "qualified"
+        assert quality["dependency_resolution"]["typescript"] == {
+            "import_specifiers": 3,
+            "resolved_local": 1,
+            "external": 1,
+            "unresolved_local": 1,
+            "linked_local": 1,
+            "unlinked_local": 0,
+            "local_resolution_rate": 0.5,
+            "local_edge_rate": 1.0,
+            "configuration_error_count": 0,
+            "metrics_qualified": True,
+        }
+
+
 def test_balanced_scores_are_bounded(sample_architecture, sample_graph):
     metrics = compute_all_metrics(sample_architecture, sample_graph)
 

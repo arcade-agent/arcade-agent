@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from arcade_agent.algorithms.coupling import compute_balanced_scores
+from arcade_agent.algorithms.coupling import compute_balanced_scores, graph_quality_context
 from arcade_agent.algorithms.smells import SmellInstance
 from arcade_agent.ci.graph_filter import _filter_non_architectural_entities
 from arcade_agent.exporters.json import build_component_summary, build_graph_summary
@@ -198,6 +198,8 @@ def main() -> None:
         "derived_metrics": {m.name: round(m.value, 4) for m in derived_metrics},
         "principle_signals": principle_signals,
         "score_drivers": score_drivers,
+        "graph_metadata": graph.metadata,
+        "graph_quality": graph_quality_context(graph),
         "smells": [_smell_to_dict(s) for s in smells],
     }
 

@@ -64,6 +64,7 @@ def test_self_analysis_filters_registration_import_edges_only():
                 "arcade_agent.algorithms.matching.match_components",
             ],
         },
+        metadata={"dependency_resolution": {"typescript": {"metrics_qualified": True}}},
     )
 
     filtered = _filter_non_architectural_entities(graph)
@@ -78,6 +79,7 @@ def test_self_analysis_filters_registration_import_edges_only():
         "arcade_agent.algorithms.matching.match_components",
         "import",
     ) in filtered.to_edge_tuples()
+    assert filtered.metadata == graph.metadata
 
 
 def test_run_self_analysis_writes_balanced_scores(tmp_path, monkeypatch):
@@ -140,6 +142,8 @@ def test_run_self_analysis_writes_balanced_scores(tmp_path, monkeypatch):
         "SmellDiscipline",
     }
     assert set(payload["score_drivers"]) == {"risks", "strengths"}
+    assert payload["graph_metadata"] == {}
+    assert payload["graph_quality"] is None
 
 
 def test_run_self_analysis_keeps_registration_like_helpers_by_default(tmp_path, monkeypatch):

@@ -98,3 +98,28 @@ prevention rules so the same defect is not rediscovered language by language.
 - First encountered: Rust parser reland, 2026-08-10.
 - **Pattern note:** Applies to any annotation-gated exclusion (Go build tags,
   C/C++ `#ifdef`), not only Rust.
+
+## 5. Configured local imports were silently classified as external dependencies
+
+- **Symptom:** TypeScript monorepos retained local bare specifiers such as
+  `@workspace/core` on entities but emitted no dependency edges. RCI could therefore read
+  `1.0` on an observed graph that fell to `0.5` when the omitted inter-component edges were
+  restored, with no warning that the graph was incomplete.
+- **Root cause:** The linker equated every non-relative specifier with an external package.
+  It did not read workspace manifests or `tsconfig`/`jsconfig` resolver configuration, and
+  the cache key tracked source mtimes only, so even a later config-aware result could go
+  stale after a paths edit.
+- **Detection:** Pair relative and configured-bare imports to the same local entity; assert
+  both edges, mutate each resolver input and assert a cache miss, then verify unresolved
+  local aliases remain distinct from genuine externals in graph and metric metadata.
+- **Fix:** Isolate configuration-aware resolution behind a three-outcome contract
+  (resolved local / unresolved local / external), hash resolver inputs, expose bounded
+  resolution and symbol-link coverage, and attach a qualifier to graph-derived metrics
+  without silently changing their formulas.
+- **Prevention:** Any parser whose build system can rename local modules must inventory
+  those manifests/configs before calling a bare import external. Treat module resolution
+  coverage as part of the result contract, not as a log-only implementation detail.
+- First encountered: TypeScript issue #41, 2026-08-14; fixed and real-monorepo validated
+  2026-08-21.
+- **Pattern note:** Generalizes to Python package aliases, JVM build-module coordinates,
+  Go replacements, and other build-system names that do not resemble relative paths.
