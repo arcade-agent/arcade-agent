@@ -73,7 +73,7 @@ def test_readme_documents_copyable_standalone_ci_template():
     readme = (ROOT / "README.md").read_text()
     version = _package_version()
 
-    assert f"uses: lemduc/arcade-agent/actions/analyze@v{version}" in readme
+    assert f"uses: arcade-agent/arcade-agent/actions/analyze@v{version}" in readme
     assert f'arcade-agent-version: "{version}"' in readme
     assert "arcade-agent-version: latest" not in readme
     assert "standalone" in readme
@@ -121,7 +121,7 @@ def test_copyable_workflow_template_is_standalone():
     version = _package_version()
 
     assert "workflow_call:" not in workflow
-    assert "uses: lemduc/arcade-agent/.github/workflows/" not in workflow
+    assert "uses: arcade-agent/arcade-agent/.github/workflows/" not in workflow
     assert f'ARCADE_AGENT_VERSION: "{version}"' in workflow
     assert "python -m pip install \"arcade-agent${INSTALL_EXTRAS}\"" in workflow
     assert "arcade-self-analysis" in workflow
@@ -152,7 +152,7 @@ def test_analyze_composite_action_provides_short_market_style_api():
     assert "github.event.pull_request.head.repo.full_name == github.repository" in action
     assert "refs/heads/main" not in action
 
-    assert f"uses: lemduc/arcade-agent/actions/analyze@v{version}" in readme
+    assert f"uses: arcade-agent/arcade-agent/actions/analyze@v{version}" in readme
     assert f'arcade-agent-version: "{version}"' in readme
 
 
