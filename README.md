@@ -380,6 +380,20 @@ The action posts a comment with:
 
 The comment is updated on each push to the PR (not duplicated).
 
+## 🏛️ Real-World Benchmarks & Case Studies
+
+arcade-agent is actively dogfooded and benchmarked on real-world production codebases, ranging from ultra-low-latency concurrency engines to massive enterprise monoliths. All living testbeds are monitored continuously via [`arcade-agent/analyze-action`](https://github.com/arcade-agent/analyze-action) with live GitHub Pages architecture dashboards and dynamic shields badges:
+
+| Project | Scale | Components | Smells | Architectural Insights | Live Report |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| [**parallel-collectors**](https://github.com/arcade-agent/parallel-collectors) | 21 files / 185 entities | 97 | **0** | Clean baseline reference architecture | [![Architecture](https://img.shields.io/endpoint?url=https://arcade-agent.github.io/parallel-collectors/badge.json)](https://arcade-agent.github.io/parallel-collectors/) |
+| [**LMAX Disruptor**](https://github.com/arcade-agent/disruptor) | 71 files / 373 entities | 294 | **5** | Discovered `RingBuffer <-> dsl.ProducerType` inversion cycle | [![Architecture](https://img.shields.io/endpoint?url=https://arcade-agent.github.io/disruptor/badge.json)](https://arcade-agent.github.io/disruptor/) |
+| [**HikariCP**](https://github.com/arcade-agent/HikariCP) | 49 files / 566 entities | 10 | **7** | Discovered unused import cycle between pool and datasource | [![Architecture](https://img.shields.io/endpoint?url=https://arcade-agent.github.io/HikariCP/badge.json)](https://arcade-agent.github.io/HikariCP/) |
+| [**Caffeine**](https://github.com/arcade-agent/caffeine) | 51 files / 818 entities | 766 | **4** | Discovered Javadoc-only coupling between `Cache` and `stats` | [![Architecture](https://img.shields.io/endpoint?url=https://arcade-agent.github.io/caffeine/badge.json)](https://arcade-agent.github.io/caffeine/) |
+| [**Dataverse**](https://github.com/arcade-agent/dataverse) | 1,028 files / 13k entities | 189 | **86** | Detected 113-node tangled enterprise cycle in 4.5s | [![Architecture](https://img.shields.io/endpoint?url=https://arcade-agent.github.io/dataverse/badge.json)](https://arcade-agent.github.io/dataverse/) |
+
+👉 Read the full [Java Speed Demons & Enterprise Case Studies](docs/case-studies/java-speed-demons.md) for root-cause analyses and upstream PR proposals.
+
 ## Roadmap
 
 arcade-agent ports and extends the capabilities of the original [ARCADE](https://github.com/usc-softarch/arcade_core) Java workbench, and is evolving into a token-efficient codebase understanding layer for AI agents. See [ROADMAP.md](ROADMAP.md) for the full AI agent integration roadmap.
