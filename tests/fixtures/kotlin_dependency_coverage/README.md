@@ -28,11 +28,19 @@ renderer imports were attributed to nine class/method edges. These are snapshot
 observations, not contracts enforced by the regression tests.
 
 The fix declares `relation_coverage` in graph metadata. A sparse candidate with
-incomplete Kotlin/Rust call coverage remains visible as a LOW **insufficient
+incomplete Java/Kotlin/Rust call coverage remains visible as a LOW **insufficient
 coverage** finding. Its explanation does not claim multiple responsibilities or
 recommend splitting the component before inspecting source or collecting calls.
 Graph merge, filtering, cache and serialization retain the coverage declaration;
 the parse-cache schema changes so old entries cannot hide it.
+
+Coverage is graph-wide per language, not a per-component or per-call completeness
+claim. Accepted call states are `unknown`, `not_collected`, `partial` and `complete`.
+Malformed declarations, missing languages in a declared map, and `complete`
+without the `calls` relation become `unknown`. A source set with undeclared
+coverage cannot be merged into a complete declaration without losing that claim.
+Graphs with no declaration at all preserve the legacy heuristic for compatibility;
+re-parse old serialized graphs to obtain current parser capabilities.
 
 The regression runs normally without `xfail`. It permits suppression, downgrade
 or visible qualification, but rejects an unqualified HIGH conclusion. Relational

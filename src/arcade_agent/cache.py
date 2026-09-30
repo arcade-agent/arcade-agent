@@ -13,7 +13,7 @@ from arcade_agent.serialization import dict_to_graph, graph_to_dict
 logger = logging.getLogger(__name__)
 
 _CACHE_DIR = ".arcade-cache"
-_GRAPH_CACHE_SCHEMA_VERSION = "2"  # Graphs now carry relation coverage.
+_GRAPH_CACHE_SCHEMA_VERSION = "3"  # Java coverage and conservative unknown declarations.
 
 
 def _cache_dir(project_root: Path) -> Path:

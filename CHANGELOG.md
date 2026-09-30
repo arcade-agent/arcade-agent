@@ -9,12 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
-- Qualify sparse concern-overload findings when Kotlin/Rust call coverage is
+- Qualify sparse concern-overload findings when Java/Kotlin/Rust call coverage is
   incomplete. Graph metadata records collected relations and preserves the
   declaration through merge, filtering, cache and serialization. A LOW
   insufficient-coverage warning remains visible; import-cycle detection stays
   available. Parse caches are invalidated once for the new coverage contract.
-  Existing Kotlin/Rust smell severities and derived scores can change; regenerate
+  Malformed or contradictory declarations remain explicitly unknown; merging
+  source sets cannot upgrade unknown coverage to complete. Entirely undeclared
+  legacy graphs retain the existing heuristic contract.
+  Existing Java/Kotlin/Rust smell severities and derived scores can change; regenerate
   baselines before comparing them with reports from earlier versions.
 
 ## 0.3.0 — 2026-08-21
