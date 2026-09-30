@@ -487,4 +487,10 @@ class KotlinParser(LanguageParser):
                 seen.add(key)
                 unique_edges.append(edge)
 
-        return DependencyGraph(entities=entities, edges=unique_edges, packages=packages)
+        return DependencyGraph(
+            entities=entities, edges=unique_edges, packages=packages,
+            metadata={"relation_coverage": {"kotlin": {
+                "collected_relations": ["extends", "implements", "import"],
+                "call_coverage": "not_collected",
+            }}},
+        )

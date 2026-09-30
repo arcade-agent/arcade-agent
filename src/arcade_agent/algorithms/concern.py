@@ -9,11 +9,22 @@ from __future__ import annotations
 
 import json
 import logging
+from typing import Literal, NotRequired, TypedDict
 
 from arcade_agent.algorithms.architecture import Architecture
 from arcade_agent.parsers.graph import DependencyGraph
 
 log = logging.getLogger(__name__)
+
+
+class ConcernOverloadFinding(TypedDict):
+    component: str
+    entity_count: int
+    severity: Literal["high", "medium", "low"]
+    internal_edges: int
+    internal_edges_per_entity: float
+    coverage_status: NotRequired[Literal["insufficient"]]
+    incomplete_call_languages: NotRequired[list[str]]
 
 
 def detect_concern_overload(
@@ -22,7 +33,7 @@ def detect_concern_overload(
     threshold: int = 20,
     high_threshold: int = 40,
     min_internal_edges_per_entity: float = 0.4,
-) -> list[dict]:
+) -> list[ConcernOverloadFinding]:
     """Detect components with too many responsibilities.
 
     A component is flagged only when it is both large and internally sparse.
@@ -42,7 +53,8 @@ def detect_concern_overload(
         List of dicts with component name, entity count, severity, and
         cohesion details.
     """
-    results = []
+    results: list[ConcernOverloadFinding] = []
+    coverage = dep_graph.relation_coverage()
     for comp in architecture.components:
         count = len(comp.entities)
         if count <= threshold:
@@ -53,14 +65,30 @@ def detect_concern_overload(
         if internal_edges_per_entity >= min_internal_edges_per_entity:
             continue
 
-        severity = "high" if count > high_threshold else "medium"
-        results.append({
+        severity: Literal["high", "medium", "low"] = (
+            "high" if count > high_threshold else "medium"
+        )
+        incomplete_languages = sorted({
+            entity.language
+            for fqn in comp.entities
+            if (entity := dep_graph.entities.get(fqn)) is not None
+            and entity.language in coverage
+            and coverage[entity.language]["call_coverage"] != "complete"
+        })
+        finding: ConcernOverloadFinding = {
             "component": comp.name,
             "entity_count": count,
             "severity": severity,
             "internal_edges": internal_edges,
             "internal_edges_per_entity": round(internal_edges_per_entity, 2),
-        })
+        }
+        if incomplete_languages:
+            finding.update({
+                "severity": "low",
+                "coverage_status": "insufficient",
+                "incomplete_call_languages": incomplete_languages,
+            })
+        results.append(finding)
     return results
 
 
