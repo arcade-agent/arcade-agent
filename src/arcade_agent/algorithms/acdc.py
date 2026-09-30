@@ -51,8 +51,10 @@ def acdc(dep_graph: DependencyGraph) -> Architecture:
     # Find entities that are dominators of others
     dominator_targets: set[str] = set(dominators.values())
 
-    for target in dominator_targets:
-        if target not in dep_graph.entities:
+    # A dominator can already be a member of an earlier cluster (chains/cycles).
+    # Stable traversal makes the ownership decision independent of hash order.
+    for target in sorted(dominator_targets):
+        if target not in dep_graph.entities or target in assigned:
             continue
         cluster_members = [target]
         assigned.add(target)
@@ -65,15 +67,15 @@ def acdc(dep_graph: DependencyGraph) -> Architecture:
         clusters[target] = cluster_members
 
     # Step 3: Adopt orphans — assign unassigned entities to nearest cluster
-    orphans = [fqn for fqn in dep_graph.entities if fqn not in assigned]
+    orphans = sorted(fqn for fqn in dep_graph.entities if fqn not in assigned)
 
     for orphan in orphans:
         best_cluster = None
         best_score = -1
 
-        deps = set(adjacency.get(orphan, []))
+        orphan_deps = set(adjacency.get(orphan, []))
         preds = set(reverse.get(orphan, []))
-        connections = deps | preds
+        connections = orphan_deps | preds
 
         for cluster_key, members in clusters.items():
             member_set = set(members)
@@ -87,7 +89,7 @@ def acdc(dep_graph: DependencyGraph) -> Architecture:
             assigned.add(orphan)
 
     # Step 4: Remaining orphans get their own clusters
-    remaining = [fqn for fqn in dep_graph.entities if fqn not in assigned]
+    remaining = sorted(fqn for fqn in dep_graph.entities if fqn not in assigned)
     if remaining:
         # Group remaining by package
         pkg_groups: dict[str, list[str]] = {}
@@ -100,11 +102,11 @@ def acdc(dep_graph: DependencyGraph) -> Architecture:
             clusters[key] = members
 
     # Build architecture
-    components = []
+    components: list[Component] = []
     for key, members in sorted(clusters.items(), key=lambda x: -len(x[1])):
-        entity = dep_graph.entities.get(key)
-        if entity:
-            name = entity.package.split(".")[-1].title() if entity.package else entity.name
+        anchor = dep_graph.entities.get(key)
+        if anchor:
+            name = anchor.package.split(".")[-1].title() if anchor.package else anchor.name
         else:
             name = key.split(".")[-1]
 
