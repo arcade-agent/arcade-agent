@@ -5,6 +5,18 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Fixed
+
+- Qualify sparse concern-overload findings when Kotlin/Rust call coverage is
+  incomplete. Graph metadata records collected relations and preserves the
+  declaration through merge, filtering, cache and serialization. A LOW
+  insufficient-coverage warning remains visible; import-cycle detection stays
+  available. Parse caches are invalidated once for the new coverage contract.
+  Existing Kotlin/Rust smell severities and derived scores can change; regenerate
+  baselines before comparing them with reports from earlier versions.
+
 ## 0.3.0 — 2026-08-21
 
 Also in this release: **Rust** parser support, **polyglot multi-language

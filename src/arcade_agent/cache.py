@@ -13,6 +13,7 @@ from arcade_agent.serialization import dict_to_graph, graph_to_dict
 logger = logging.getLogger(__name__)
 
 _CACHE_DIR = ".arcade-cache"
+_GRAPH_CACHE_SCHEMA_VERSION = "2"  # Graphs now carry relation coverage.
 
 
 def _cache_dir(project_root: Path) -> Path:
@@ -51,6 +52,7 @@ def cache_key(
     """
     root = Path(source_path).resolve()
     hasher = hashlib.sha256()
+    hasher.update(f"graph-schema:{_GRAPH_CACHE_SCHEMA_VERSION}".encode())
     hasher.update(str(root).encode())
     hasher.update((language or "auto").encode())
     hasher.update(b"tests:excluded" if exclude_tests else b"tests:included")

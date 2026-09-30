@@ -1,4 +1,4 @@
-"""Run from the repository root with PYTHONPATH=src python examples/.../reproduce.py."""
+"""Run from the repository root with PYTHONPATH=src python tests/fixtures/.../reproduce.py."""
 
 from __future__ import annotations
 

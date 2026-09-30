@@ -28,7 +28,7 @@ import logging
 from dataclasses import replace
 from typing import Any
 
-from arcade_agent.parsers.graph import DependencyGraph, Edge, Entity
+from arcade_agent.parsers.graph import DependencyGraph, Edge, Entity, merge_relation_coverage
 
 logger = logging.getLogger(__name__)
 
@@ -323,6 +323,9 @@ def merge_and_relink(*graphs: DependencyGraph) -> DependencyGraph:
     }
     if collision_details:
         metadata["fqn_collision_details"] = collision_details
+    coverage = merge_relation_coverage(*graphs)
+    if coverage:
+        metadata["relation_coverage"] = coverage
     return relink_edges(
         DependencyGraph(
             entities=entities,
