@@ -1,124 +1,117 @@
-# Real-World Java Benchmarks & Architectural Case Studies
+# Java Structural Analysis Case Studies
 
-To validate `arcade-agent` in real-world environments, we benchmarked and deployed continuous architectural analysis across five prominent Java open-source repositories representing diverse design paradigms: from ultra-high-speed concurrency primitives to enterprise-scale monoliths.
+These five Java repositories are living testbeds for `arcade-agent`. Their
+GitHub Actions workflows publish architecture dashboards and badges on pushes,
+manual runs and a monthly schedule. The findings below describe the recorded
+structural graph and identify places where source inspection is needed.
 
-All repositories are continuously monitored via [`arcade-agent/analyze-action`](https://github.com/arcade-agent/analyze-action) on GitHub Actions, with interactive architecture visualizers and dynamic shields badges deployed to GitHub Pages.
+## Report snapshot and provenance
 
----
+The badge counts were checked on 2026-09-29 (America/Chicago). Live reports can
+change; the source commits and successful analysis runs below identify the
+reviewed snapshots. Counts from different recovery configurations are not a
+ranking of project quality. Zero detected smells does not establish complete
+coverage or absence of architectural problems.
 
-## 📊 Benchmark Summary Matrix
+| Testbed | Components | Detected smells | Source snapshot | Successful analysis |
+| --- | ---: | ---: | --- | --- |
+| [parallel-collectors](https://arcade-agent.github.io/parallel-collectors/) | 97 | 0 | [`dfa509f`](https://github.com/arcade-agent/parallel-collectors/tree/dfa509ffc54bae6da1db06b262b6877a97d75146) | [Run 36423978934](https://github.com/arcade-agent/parallel-collectors/actions/runs/36423978934) |
+| [LMAX Disruptor](https://arcade-agent.github.io/disruptor/) | 294 | 5 | [`451115e`](https://github.com/arcade-agent/disruptor/tree/451115ed905b0784303118435eec1ffacf5be7fc) | [Run 36513625373](https://github.com/arcade-agent/disruptor/actions/runs/36513625373) |
+| [HikariCP](https://arcade-agent.github.io/HikariCP/) | 10 | 7 | [`cb11fe4`](https://github.com/arcade-agent/HikariCP/tree/cb11fe41c3a91e92ad36027e1c1f3c29af1124bf) | [Run 36513574440](https://github.com/arcade-agent/HikariCP/actions/runs/36513574440) |
+| [Caffeine](https://arcade-agent.github.io/caffeine/) | 766 | 4 | [`e7a32ff`](https://github.com/arcade-agent/caffeine/tree/e7a32ff3a5b8675fa623b3352f805a846ea538dd) | [Run 36513806260](https://github.com/arcade-agent/caffeine/actions/runs/36513806260) |
+| [Dataverse](https://arcade-agent.github.io/dataverse/) | 189 | 86 | [`597dbac`](https://github.com/arcade-agent/dataverse/tree/597dbac363fc14b26a7cbe07bfa2280188621ac1) | [Run 36512459288](https://github.com/arcade-agent/dataverse/actions/runs/36512459288) |
 
-| Project | Domain | Scale (Files / Entities) | Components | Detected Smells | Live Architecture Report | Badge Status |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| [**parallel-collectors**](https://github.com/arcade-agent/parallel-collectors) | Concurrent Stream Collectors | 21 files / 185 entities | 97 | **0 smells** | [Interactive Report](https://arcade-agent.github.io/parallel-collectors/) | ![Clean](https://img.shields.io/endpoint?url=https://arcade-agent.github.io/parallel-collectors/badge.json) |
-| [**LMAX Disruptor**](https://github.com/arcade-agent/disruptor) | Low-Latency Messaging | 71 files / 373 entities | 294 | **5 smells** | [Interactive Report](https://arcade-agent.github.io/disruptor/) | ![Disruptor](https://img.shields.io/endpoint?url=https://arcade-agent.github.io/disruptor/badge.json) |
-| [**HikariCP**](https://github.com/arcade-agent/HikariCP) | Zero-Overhead JDBC Pool | 49 files / 566 entities | 10 | **7 smells** | [Interactive Report](https://arcade-agent.github.io/HikariCP/) | ![HikariCP](https://img.shields.io/endpoint?url=https://arcade-agent.github.io/HikariCP/badge.json) |
-| [**Caffeine**](https://github.com/arcade-agent/caffeine) | Near-Optimal In-Memory Cache | 51 files / 818 entities | 766 | **4 smells** | [Interactive Report](https://arcade-agent.github.io/caffeine/) | ![Caffeine](https://img.shields.io/endpoint?url=https://arcade-agent.github.io/caffeine/badge.json) |
-| [**Dataverse**](https://github.com/arcade-agent/dataverse) | Enterprise Research Data Platform | 1,028 files / 13,265 entities | 189 | **86 smells** | [Interactive Report](https://arcade-agent.github.io/dataverse/) | ![Dataverse](https://img.shields.io/endpoint?url=https://arcade-agent.github.io/dataverse/badge.json) |
+The reviewed workflows pin `arcade-agent/analyze-action` to
+[`4db79fe26878a80405020f293fa478d42737c200`](https://github.com/arcade-agent/analyze-action/tree/4db79fe26878a80405020f293fa478d42737c200)
+(v1.3.0). This identifies the action wrapper; it is separate from the installed
+`arcade-agent` package version. Disruptor, HikariCP and Dataverse explicitly
+analyze `src/main/java` with `language: java`; Caffeine uses
+`caffeine/src/main/java`. The parallel-collectors workflow uses action defaults.
+Reproduction must retain the full workflow inputs, package version, source
+scope, recovery algorithm and exclusions from the corresponding run.
 
----
+This is a case-study snapshot, not a controlled performance benchmark. The
+previous 4.5-second Dataverse claim is omitted because its hardware, measured
+stages, cache state and repeated timings were not recorded here. A speed claim
+requires those details, the exact analyzer version and comparable workloads.
 
-## 🔍 Case Study 1: LMAX Disruptor — Real Structural Dependency Inversion
+## Disruptor: a core-to-DSL type dependency
 
-- **Upstream:** [LMAX-Exchange/disruptor](https://github.com/LMAX-Exchange/disruptor)
-- **Live Fork:** [arcade-agent/disruptor](https://github.com/arcade-agent/disruptor)
-- **Detected Smell:** Dependency Cycle between `com.lmax.disruptor.RingBuffer` and `com.lmax.disruptor.dsl.ProducerType`
+Upstream: [LMAX-Exchange/disruptor](https://github.com/LMAX-Exchange/disruptor).
 
-### The Architectural Flaw
-`LMAX Disruptor` is renowned for mechanical sympathy and lock-free concurrency. The project separates its core ring buffer engine (`com.lmax.disruptor`) from its ergonomic builder facade (`com.lmax.disruptor.dsl`).
+The pinned [RingBuffer source](https://github.com/arcade-agent/disruptor/blob/451115ed905b0784303118435eec1ffacf5be7fc/src/main/java/com/lmax/disruptor/RingBuffer.java#L19)
+imports `com.lmax.disruptor.dsl.ProducerType` and uses that enum in a factory
+signature. The [DSL Disruptor source](https://github.com/arcade-agent/disruptor/blob/451115ed905b0784303118435eec1ffacf5be7fc/src/main/java/com/lmax/disruptor/dsl/Disruptor.java)
+uses `RingBuffer`. Together these establish a bidirectional **package** dependency
+between core and DSL. They do not establish a class cycle between `RingBuffer`
+and the enum, or a runtime performance defect.
 
-However, `arcade-agent` detected a bidirectional dependency cycle between the core and the DSL:
-1. `com.lmax.disruptor.dsl.Disruptor` creates and wires `RingBuffer` (expected: DSL depends on Core).
-2. `com.lmax.disruptor.RingBuffer` and `com.lmax.disruptor.SingleProducerSequencer` directly import `com.lmax.disruptor.dsl.ProducerType`!
+[SingleProducerSequencer](https://github.com/arcade-agent/disruptor/blob/451115ed905b0784303118435eec1ffacf5be7fc/src/main/java/com/lmax/disruptor/SingleProducerSequencer.java)
+does not import `ProducerType`; its occurrences are in a diagnostic string and
+Javadoc. It should not be cited as evidence for the executable dependency.
 
-```
-┌─────────────────────────────────┐
-│     com.lmax.disruptor.dsl      │
-│  (Disruptor, ProducerType)      │
-└────────────┬──────────▲─────────┘
-             │          │
-    creates  │          │ imports ProducerType
-             ▼          │
-┌───────────────────────┴─────────┐
-│       com.lmax.disruptor        │
-│  (RingBuffer, Sequencer)        │
-└─────────────────────────────────┘
-```
+A possible design discussion is to expose the producer policy in the core API.
+Moving an existing public enum changes signatures and can break clients. Java
+enums cannot extend another enum, so an extending enum alias is not a migration
+strategy. A proposal would need compatible overloads and explicit conversion
+from the existing DSL enum, plus source/binary compatibility tests and agreement
+from the maintainer. No upstream fix or performance improvement is claimed.
 
-Because `ProducerType` (an enum denoting single vs multi producer sequencing) was placed in the `.dsl` package, the core sequencer engine cannot compile or be extracted without depending on its high-level wrapper.
+## HikariCP: documentation attribution in the import graph
 
-### Proposed Upstream Contribution
-- Move `ProducerType` to `com.lmax.disruptor.ProducerType` (or maintain `com.lmax.disruptor.dsl.ProducerType` as a deprecated alias extending/referencing the core enum).
-- Breaking this cycle restores true layered architecture: Core primitives remain completely agnostic of the DSL.
+Upstream: [brettwooldridge/HikariCP](https://github.com/brettwooldridge/HikariCP).
 
----
+The pinned [HikariPool source](https://github.com/arcade-agent/HikariCP/blob/cb11fe41c3a91e92ad36027e1c1f3c29af1124bf/src/main/java/com/zaxxer/hikari/pool/HikariPool.java#L20)
+imports `HikariDataSource`; its other occurrences are in comments, including a
+Javadoc link. `HikariDataSource` also uses `HikariPool`. An import-based graph
+therefore includes an edge in both directions, but this evidence does not show
+an executable call from the pool to the datasource.
 
-## 🔍 Case Study 2: HikariCP — Phantom Cycle from Unused Javadoc Imports
+The analyzer currently attributes file imports to class and method entities
+without checking whether each entity references the imported type. This is
+tracked in [arcade-agent #47](https://github.com/arcade-agent/arcade-agent/issues/47).
+The report should distinguish import/documentation attribution from resolved
+usage before presenting the cycle as executable coupling.
 
-- **Upstream:** [brettwooldridge/HikariCP](https://github.com/brettwooldridge/HikariCP)
-- **Live Fork:** [arcade-agent/HikariCP](https://github.com/arcade-agent/HikariCP)
-- **Detected Smell:** Dependency Cycle `HikariDataSource <-> HikariPool` within a 7-component tangle
+Using a fully qualified Javadoc link can remove an import-attribution edge in
+this parser, but the documentation still references the same class. Such an
+editorial change is not proof of removing a runtime architectural defect.
 
-### The Architectural Flaw
-HikariCP is an ultra-fast, zero-overhead JDBC connection pool. `HikariDataSource` acts as the public JDBC facade wrapping `HikariPool`.
-Naturally, `HikariDataSource` imports and holds an instance of `com.zaxxer.hikari.pool.HikariPool`.
+## Caffeine: documentation references in statistics types
 
-However, `arcade-agent` flagged `HikariPool` as depending backwards on `HikariDataSource`.
-Inspecting `com/zaxxer/hikari/pool/HikariPool.java`:
-```java
-package com.zaxxer.hikari.pool;
+Upstream: [ben-manes/caffeine](https://github.com/ben-manes/caffeine).
 
-import com.zaxxer.hikari.HikariConfig;
-import com.zaxxer.hikari.HikariDataSource; // <-- Line 20
-```
-In the entire 912 lines of `HikariPool.java`, `HikariDataSource` is **never referenced in code**. It only appears inside Javadoc comments:
-```java
-* through {@link HikariDataSource#evictConnection(Connection)} then {@code owner} is {@code true}.
-```
-The developer added the import solely so their IDE wouldn't warn about an unresolved `@link` in Javadoc. However, this introduced a compile-level dependency edge in static AST parsers, coupling the internal pool back to the outer DataSource facade.
+The pinned statistics sources
+([StatsCounter](https://github.com/arcade-agent/caffeine/blob/e7a32ff3a5b8675fa623b3352f805a846ea538dd/caffeine/src/main/java/com/github/benmanes/caffeine/cache/stats/StatsCounter.java),
+[CacheStats](https://github.com/arcade-agent/caffeine/blob/e7a32ff3a5b8675fa623b3352f805a846ea538dd/caffeine/src/main/java/com/github/benmanes/caffeine/cache/stats/CacheStats.java),
+[ConcurrentStatsCounter](https://github.com/arcade-agent/caffeine/blob/e7a32ff3a5b8675fa623b3352f805a846ea538dd/caffeine/src/main/java/com/github/benmanes/caffeine/cache/stats/ConcurrentStatsCounter.java))
+import `Cache` for documentation links. `Cache.stats()` exposes `CacheStats`, so
+an import-based report can show a `cache`/`stats` package cycle. Inspecting the
+relation kinds and actual references is necessary before interpreting it as
+executable coupling. This is another useful testbed for #47.
 
-### Proposed Upstream Contribution
-- Remove `import com.zaxxer.hikari.HikariDataSource;` and use the fully qualified `{@link com.zaxxer.hikari.HikariDataSource#evictConnection}` in the Javadoc tag.
-- This immediately breaks the cyclic dependency between pool internals and the datasource facade.
+Changing the spelling of a Javadoc reference does not prove that the statistics
+package has zero dependencies or that its runtime design improved.
 
----
+## Dataverse: a large structural cycle candidate
 
-## 🔍 Case Study 3: Caffeine — Javadoc Import Tangling
+Upstream: [IQSS/dataverse](https://github.com/IQSS/dataverse).
 
-- **Upstream:** [ben-manes/caffeine](https://github.com/ben-manes/caffeine)
-- **Live Fork:** [arcade-agent/caffeine](https://github.com/arcade-agent/caffeine)
-- **Detected Smell:** Dependency Cycle `Cache <-> Stats`
+The snapshot reports 189 components and 86 smells. The large reported dependency
+cycle is an investigation target. The Java parser in the released analysis path
+emits `import`, `extends` and `implements` edges; it does not resolve method-call
+edges. The report therefore cannot establish mutual service cross-calls or
+runtime dispatch from the graph alone. File imports attributed to methods can
+also inflate entity-edge counts.
 
-### The Architectural Flaw
-Caffeine separates its statistics collection into a standalone package: `com.github.benmanes.caffeine.cache.stats`.
-The core `Cache` interface depends on `stats` (e.g. `Cache.stats()` returns `CacheStats`).
+Before proposing a refactor, inspect the cycle's source imports, relation kinds,
+component membership and used types. Separate documentation-only attribution
+from executable structural dependencies, and confirm call-level claims with
+source or a compiler-backed analysis.
 
-However, `StatsCounter.java`, `CacheStats.java`, and `ConcurrentStatsCounter.java` in the `stats` sub-package all import `com.github.benmanes.caffeine.cache.Cache`.
-Just like HikariCP, these classes never execute any methods or declare any fields of type `Cache` — the import exists purely to satisfy `@link Cache#stats` in documentation!
+## Reading these reports
 
-### Proposed Upstream Contribution
-- Decouple `com.github.benmanes.caffeine.cache.stats` by removing the unused `Cache` import and using fully-qualified links in Javadoc.
-- Allows `stats` to serve as a pure, zero-dependency statistical telemetry package.
-
----
-
-## 🔍 Case Study 4: Harvard Dataverse — Monolithic Architectural Tangle
-
-- **Upstream:** [IQSS/dataverse](https://github.com/IQSS/dataverse)
-- **Live Fork:** [arcade-agent/dataverse](https://github.com/arcade-agent/dataverse)
-- **Scale:** 1,028 Java files, 13,265 entities, 178,506 dependency edges.
-- **Detected Smells:** **86 smells**, including a massive **113-component circular dependency tangle**.
-
-### The Architectural Flaw
-Dataverse is an established Java EE enterprise monolith. Over a decade of organic development, business services (`DatasetServiceBean`, `DataverseServiceBean`, `AuthenticationServiceBean`) have developed mutual bidirectional cross-calls.
-`arcade-agent` parsed all 178,506 edges and detected this 113-node mega-cycle in just **4.5 seconds**.
-
-This demonstrates `arcade-agent`'s capacity to handle heavy enterprise architectures where manual cycle detection is impossible.
-
----
-
-## 💡 Key Takeaways for Architectural Engineering
-
-1. **Unused Imports are not Harmless:** In high-profile projects like HikariCP and Caffeine, unused imports kept for Javadoc create false-positive dependency edges and phantom architectural cycles. Clean architecture linters should enforce zero unused imports even for Javadoc.
-2. **Layer Inversion Happens Naturally:** Even in pristine libraries like LMAX Disruptor, utility enums like `ProducerType` often end up placed in higher-level packages (`dsl`), accidentally dragging core engines into bidirectional cycles.
-3. **Continuous Enforcement via GitHub Actions:** By integrating `arcade-agent/analyze-action` into CI with pinned commit hashes, teams can detect these architectural drifts before they merge into release branches.
+- Keep parser coverage and relation provenance beside architecture conclusions.
+- Treat smell counts as investigation signals within a fixed configuration.
+- Preserve source and analyzer versions when comparing baselines.
+- Validate performance with a separate, reproducible measurement protocol.

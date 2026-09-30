@@ -380,19 +380,24 @@ The action posts a comment with:
 
 The comment is updated on each push to the PR (not duplicated).
 
-## 🏛️ Real-World Benchmarks & Case Studies
+## 🏛️ Java Structural Analysis Case Studies
 
-arcade-agent is actively dogfooded and benchmarked on real-world production codebases, ranging from ultra-low-latency concurrency engines to massive enterprise monoliths. All living testbeds are monitored continuously via [`arcade-agent/analyze-action`](https://github.com/arcade-agent/analyze-action) with live GitHub Pages architecture dashboards and dynamic shields badges:
+Five Java repositories serve as living testbeds for `arcade-agent/analyze-action`.
+Their dashboards show structural analysis findings that need interpretation in
+light of parser coverage and source references. Snapshot counts checked on
+2026-09-29 are shown below; live badges may change.
 
-| Project | Scale | Components | Smells | Architectural Insights | Live Report |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| [**parallel-collectors**](https://github.com/arcade-agent/parallel-collectors) | 21 files / 185 entities | 97 | **0** | Clean baseline reference architecture | [![Architecture](https://img.shields.io/endpoint?url=https://arcade-agent.github.io/parallel-collectors/badge.json)](https://arcade-agent.github.io/parallel-collectors/) |
-| [**LMAX Disruptor**](https://github.com/arcade-agent/disruptor) | 71 files / 373 entities | 294 | **5** | Discovered `RingBuffer <-> dsl.ProducerType` inversion cycle | [![Architecture](https://img.shields.io/endpoint?url=https://arcade-agent.github.io/disruptor/badge.json)](https://arcade-agent.github.io/disruptor/) |
-| [**HikariCP**](https://github.com/arcade-agent/HikariCP) | 49 files / 566 entities | 10 | **7** | Discovered unused import cycle between pool and datasource | [![Architecture](https://img.shields.io/endpoint?url=https://arcade-agent.github.io/HikariCP/badge.json)](https://arcade-agent.github.io/HikariCP/) |
-| [**Caffeine**](https://github.com/arcade-agent/caffeine) | 51 files / 818 entities | 766 | **4** | Discovered Javadoc-only coupling between `Cache` and `stats` | [![Architecture](https://img.shields.io/endpoint?url=https://arcade-agent.github.io/caffeine/badge.json)](https://arcade-agent.github.io/caffeine/) |
-| [**Dataverse**](https://github.com/arcade-agent/dataverse) | 1,028 files / 13k entities | 189 | **86** | Detected 113-node tangled enterprise cycle in 4.5s | [![Architecture](https://img.shields.io/endpoint?url=https://arcade-agent.github.io/dataverse/badge.json)](https://arcade-agent.github.io/dataverse/) |
+| Project | Components | Detected smells | Investigation | Live report |
+| --- | ---: | ---: | --- | --- |
+| **parallel-collectors** | 97 | 0 | Reference snapshot; zero findings is not coverage proof | [Report](https://arcade-agent.github.io/parallel-collectors/) |
+| **LMAX Disruptor** | 294 | 5 | Core/DSL package dependency through a public enum | [Report](https://arcade-agent.github.io/disruptor/) |
+| **HikariCP** | 10 | 7 | Documentation import attribution in pool/datasource edges | [Report](https://arcade-agent.github.io/HikariCP/) |
+| **Caffeine** | 766 | 4 | Documentation references in cache/statistics types | [Report](https://arcade-agent.github.io/caffeine/) |
+| **Dataverse** | 189 | 86 | Large structural cycle candidate requiring source review | [Report](https://arcade-agent.github.io/dataverse/) |
 
-👉 Read the full [Java Speed Demons & Enterprise Case Studies](docs/case-studies/java-speed-demons.md) for root-cause analyses and upstream PR proposals.
+Read the [Java case studies](docs/case-studies/java-speed-demons.md) for pinned
+source commits, successful analysis runs, scope and limitations. These reports
+do not establish call-graph completeness or a controlled speed benchmark.
 
 ## Roadmap
 
