@@ -5,6 +5,9 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -24,7 +27,12 @@ jobs:
         run: uv pip install -e ".[dev,languages,mcp]"
 
       - name: Lint
-        run: ruff check src/ tests/
+        run: ruff check src/ tests/ .github/scripts/
+
+      - name: Check release helper types
+        run: |
+          mypy .github/scripts/release_artifact.py \
+            tests/test_release_artifact.py tests/test_publish_workflow.py
 
       - name: Test
         run: pytest --tb=short
@@ -46,3 +54,65 @@ jobs:
       arcade-agent-version: "source"
       filter-non-architectural-helpers: true
     secrets: inherit
+
+  package:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build and check distributions
+        run: |
+          python -m pip install build twine
+          python -m build
+          python -m twine check dist/*
+      - name: Record package provenance
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          python .github/scripts/release_artifact.py create \
+            --dist dist --pyproject pyproject.toml \
+            --repository "$GITHUB_REPOSITORY" --sha "$SOURCE_SHA"
+      - name: Upload distributions for this main commit
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-dist
+          path: dist/
+          if-no-files-found: error
+          retention-days: 30
+          overwrite: true
+
+  release-please:
+    needs: [test, analysis, package]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: release-please-main
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Check this run still represents main
+        id: head
+        uses: actions/github-script@v7
+        env:
+          TESTED_SHA: ${{ github.sha }}
+        with:
+          script: |
+            const {data} = await github.rest.git.getRef({...context.repo, ref: 'heads/main'});
+            const current = data.object.sha === process.env.TESTED_SHA;
+            core.setOutput('current', current);
+            if (!current) core.info('Main advanced; a newer CI run will manage release PRs.');
+      - name: Update release PR or tag a merged release
+        if: steps.head.outputs.current == 'true'
+        uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4.4.1
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
