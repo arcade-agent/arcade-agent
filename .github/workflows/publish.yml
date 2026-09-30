@@ -1,69 +1,163 @@
 name: Publish to PyPI
 
 on:
-  release:
-    types: [published]
-  # Publish-on-version-bump: a push to main that changes pyproject.toml (or
-  # this workflow) publishes the version it declares — if PyPI doesn't already
-  # have it — and creates the matching tag + GitHub release.
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main]
-    paths:
-      - pyproject.toml
-      - .github/workflows/publish.yml
-  # Manual fallback: same behavior as the push trigger, run on demand.
   workflow_dispatch:
+    inputs:
+      ci-run-id:
+        description: Successful main push CI run whose distributions should be retried.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
 
 jobs:
-  publish:
+  prepare:
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_branch == 'main' &&
+        github.event.workflow_run.head_repository.full_name == github.repository))
     runs-on: ubuntu-latest
-    environment: pypi
-    permissions:
-      id-token: write
-      contents: write
-
+    outputs:
+      ready: ${{ steps.pypi.outputs.ready }}
+      version: ${{ steps.package.outputs.version }}
+      artifact-id: ${{ steps.dist.outputs.artifact-id }}
     steps:
+      # Execute only the trusted default-branch helper, never code from an artifact.
       - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Validate the source CI run
+        id: source
+        uses: actions/github-script@v7
+        env:
+          REQUESTED_RUN_ID: ${{ inputs.ci-run-id || github.event.workflow_run.id }}
+        with:
+          script: |
+            const requested = process.env.REQUESTED_RUN_ID;
+            if (!/^[1-9][0-9]*$/.test(requested || '')) throw new Error('Invalid CI run ID');
+            const runId = Number(requested);
+            if (!Number.isSafeInteger(runId)) throw new Error('CI run ID is too large');
+            const {data: run} = await github.rest.actions.getWorkflowRun({...context.repo, run_id: runId});
+            const {data: workflow} = await github.rest.actions.getWorkflow({...context.repo, workflow_id: 'ci.yml'});
+            if (run.workflow_id !== workflow.id || run.status !== 'completed' ||
+                run.conclusion !== 'success' || run.event !== 'push' || run.head_branch !== 'main' ||
+                run.head_repository?.full_name !== `${context.repo.owner}/${context.repo.repo}` ||
+                !/^[a-f0-9]{40}$/.test(run.head_sha)) {
+              throw new Error('Expected a successful main push of this repository CI workflow');
+            }
+            const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts,
+              {...context.repo, run_id: runId, per_page: 100});
+            const matches = artifacts.filter(a => a.name === 'release-dist' && !a.expired);
+            if (matches.length !== 1) throw new Error('Expected one unexpired release-dist artifact; rerun CI');
+            core.setOutput('run-id', runId);
+            core.setOutput('sha', run.head_sha);
+            core.setOutput('artifact-id', matches[0].id);
+      - name: Download distributions from the validated CI run
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          artifact-ids: ${{ steps.source.outputs.artifact-id }}
+          run-id: ${{ steps.source.outputs.run-id }}
+          github-token: ${{ github.token }}
+          path: dist
+          merge-multiple: true
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-
-      - name: Determine version and whether PyPI already has it
-        id: meta
-        run: |
-          VERSION=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
-          if curl -fsS "https://pypi.org/pypi/arcade-agent/$VERSION/json" >/dev/null 2>&1; then
-            echo "published=true" >> "$GITHUB_OUTPUT"
-            echo "PyPI already has $VERSION - nothing to publish."
-          else
-            echo "published=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Install build tools
-        if: steps.meta.outputs.published == 'false'
-        run: pip install build
-
-      - name: Build package
-        if: steps.meta.outputs.published == 'false'
-        run: python -m build
-
-      - name: Publish to PyPI
-        if: steps.meta.outputs.published == 'false'
-        uses: pypa/gh-action-pypi-publish@v1.14.0
-
-      # Push/dispatch runs have no tag or release object yet; create both at
-      # the built SHA after a successful publish. (GITHUB_TOKEN-created
-      # releases do not re-trigger this workflow, so this cannot
-      # double-publish.)
-      - name: Create tag + GitHub release
-        if: github.event_name != 'release' && steps.meta.outputs.published == 'false'
+      - name: Verify package metadata, hashes and source SHA
+        id: package
         env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.meta.outputs.tag }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
         run: |
-          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" \
-            --target "$GITHUB_SHA" --title "$TAG" --generate-notes
+          python .github/scripts/release_artifact.py verify \
+            --dist dist --repository "$GITHUB_REPOSITORY" --sha "$SOURCE_SHA"
+      - name: Require a published GitHub release at the tested commit
+        id: release
+        uses: actions/github-script@v7
+        env:
+          RELEASE_VERSION: ${{ steps.package.outputs.version }}
+          TESTED_SHA: ${{ steps.source.outputs.sha }}
+        with:
+          script: |
+            const tag = `v${process.env.RELEASE_VERSION}`;
+            let release;
+            try {
+              ({data: release} = await github.rest.repos.getReleaseByTag({...context.repo, tag}));
+            } catch (error) {
+              if (error.status !== 404) throw error;
+              core.info(`No ${tag} release; this main push does not publish a package.`);
+              return;
+            }
+            if (release.draft || release.prerelease) throw new Error('Expected a stable published release');
+            const {data: ref} = await github.rest.git.getRef({...context.repo, ref: `tags/${tag}`});
+            let object = ref.object;
+            for (let depth = 0; object.type === 'tag' && depth < 5; depth++) {
+              const {data} = await github.rest.git.getTag({...context.repo, tag_sha: object.sha});
+              object = data.object;
+            }
+            if (object.type !== 'commit') throw new Error('Release tag must resolve to a commit');
+            if (object.sha !== process.env.TESTED_SHA) {
+              core.info(`${tag} belongs to another commit; only its successful CI artifact may publish.`);
+              return;
+            }
+            core.setOutput('ready', 'true');
+      - name: Check whether PyPI already contains this version
+        if: steps.release.outputs.ready == 'true'
+        id: pypi
+        env:
+          RELEASE_VERSION: ${{ steps.package.outputs.version }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          STATUS=$(curl --silent --show-error --output pypi-response.json --write-out '%{http_code}' \
+            --connect-timeout 10 --max-time 30 --retry 2 \
+            "https://pypi.org/pypi/arcade-agent/${RELEASE_VERSION}/json")
+          case "$STATUS" in
+            200)
+              python .github/scripts/release_artifact.py pypi \
+                --dist dist --repository "$GITHUB_REPOSITORY" --sha "$SOURCE_SHA" \
+                --response pypi-response.json ;;
+            404) echo "ready=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error::Unexpected PyPI HTTP status: $STATUS"; exit 1 ;;
+          esac
+      - name: Forward verified distributions without rebuilding
+        if: steps.pypi.outputs.ready == 'true'
+        id: dist
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: pypi-dist
+          path: |
+            dist/*.whl
+            dist/*.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: prepare
+    if: needs.prepare.outputs.ready == 'true'
+    runs-on: ubuntu-latest
+    environment: pypi
+    concurrency:
+      group: pypi-${{ needs.prepare.outputs.version }}
+      cancel-in-progress: false
+    permissions:
+      actions: read
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          artifact-ids: ${{ needs.prepare.outputs.artifact-id }}
+          path: dist
+          merge-multiple: true
+      - name: Publish verified CI distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@v1.14.0
+        with:
+          skip-existing: true

@@ -322,17 +322,17 @@ jobs:
       issues: write
       pull-requests: write
     steps:
-      - uses: lemduc/arcade-agent/actions/analyze@v0.3.0
+      - uses: lemduc/arcade-agent/actions/analyze@v0.3.0 # x-release-please-version
         with:
-          arcade-agent-version: "0.3.0"
+          arcade-agent-version: "0.3.0" # x-release-please-version
 ```
 
 Common optional inputs:
 
 ```yaml
-      - uses: lemduc/arcade-agent/actions/analyze@v0.3.0
+      - uses: lemduc/arcade-agent/actions/analyze@v0.3.0 # x-release-please-version
         with:
-          arcade-agent-version: "0.3.0"
+          arcade-agent-version: "0.3.0" # x-release-please-version
           source-path: "."
           language: ""
           exclude-tests: "true"
@@ -343,8 +343,11 @@ Common optional inputs:
 ```
 
 For reproducible CI, keep `arcade-agent-version` pinned to a released package
-version such as `"0.3.0"`. Avoid `latest` in shared CI because a new package
+version such as `"0.3.0"`. Avoid `latest` in shared CI because a new package <!-- x-release-please-version -->
 release can change analyzer behavior without a workflow review.
+
+Maintainers: see [the release process](docs/releasing.md) for minor-version
+automation, CI artifact publication, setup and retries.
 
 The action stores the baseline as a GitHub Actions artifact on
 successful pushes to the repository default branch and uses that artifact for
