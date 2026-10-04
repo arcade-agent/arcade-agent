@@ -55,4 +55,5 @@ def _filter_non_architectural_entities(
         entities=kept_entities,
         edges=kept_edges,
         packages=kept_packages,
+        metadata=dict(graph.metadata),
     )

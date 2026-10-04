@@ -6,6 +6,7 @@ from pathlib import Path
 from jinja2 import Template
 
 from arcade_agent.algorithms.architecture import Architecture
+from arcade_agent.algorithms.coupling import graph_quality_context
 from arcade_agent.algorithms.metrics import MetricResult
 from arcade_agent.algorithms.smells import SmellInstance
 from arcade_agent.exporters.mermaid import (
@@ -14,6 +15,28 @@ from arcade_agent.exporters.mermaid import (
     mermaid_node_id,
 )
 from arcade_agent.parsers.graph import DependencyGraph
+
+GRAPH_QUALITY_TEMPLATE = Template("""\
+    {% if graph_quality and graph_quality.status == "qualified" %}
+    <div class="quality-warning" style="border-left:4px solid #d97706; padding:1rem 1.25rem; margin:1rem 0 2rem; background:#fffbeb; color:#78350f;">
+        <strong>{{ snapshot_name | default("") }} Qualified dependency-graph metrics.</strong>
+        Metrics were computed with incomplete discovered local-import coverage;
+        interpret them as directional signals, not a complete architecture assessment.
+        {% for language, summary in graph_quality.dependency_resolution.items() %}
+        <div><code>{{ language }}</code>:
+            {{ summary.resolved_local | default(0) }} resolved,
+            {{ summary.unresolved_local | default(0) }} unresolved,
+            {{ summary.linked_local | default(0) }} linked,
+            {{ summary.unlinked_local | default(0) }} unlinked.
+            {% if summary.configuration_error_count | default(0) %}
+            {{ summary.configuration_error_count }} configuration errors.
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+""")
+
 
 REPORT_TEMPLATE = Template("""\
 <!DOCTYPE html>
@@ -134,6 +157,8 @@ REPORT_TEMPLATE = Template("""\
             <div class="label">Smells</div>
         </div>
     </div>
+
+    {{ graph_quality_warning }}
 
     {% if metric_groups %}
     <h2 id="metrics">Quality Metrics</h2>
@@ -267,6 +292,7 @@ def export_html(
         grouped_metrics.setdefault(group_name, []).append(metric)
     for title, grouped in grouped_metrics.items():
         metric_groups.append({"title": title, "metrics": grouped})
+    graph_quality = graph_quality_context(dep_graph)
 
     html = REPORT_TEMPLATE.render(
         repo_name=repo_name,
@@ -281,6 +307,7 @@ def export_html(
         components=architecture.components,
         smells=smells,
         metric_groups=metric_groups,
+        graph_quality_warning=GRAPH_QUALITY_TEMPLATE.render(graph_quality=graph_quality),
         packages=packages,
         concerns=concerns or {},
     )
@@ -443,6 +470,8 @@ COMPARISON_TEMPLATE = Template("""\
         {% endfor %}
     </div>
 
+    {{ graph_quality_warning }}
+
     <h2 id="metrics-compare">Metrics Comparison</h2>
     <table>
         <thead>
@@ -599,6 +628,9 @@ def export_comparison_html(
         num_edges=dep_graph.num_edges,
         results=enriched,
         metric_names=metric_names,
+        graph_quality_warning=GRAPH_QUALITY_TEMPLATE.render(
+            graph_quality=graph_quality_context(dep_graph)
+        ),
         packages=packages,
     )
 
@@ -722,6 +754,8 @@ EVOLUTION_TEMPLATE = Template("""\
         {% endfor %}
     </div>
 
+    {{ graph_quality_warning }}
+
     <div class="grid" id="diagrams">
         <div class="card">
             <div class="section-label">Baseline</div>
@@ -832,6 +866,14 @@ def export_evolution_html(report: dict, output_path: Path) -> Path:
         dependency_rows=report["dependency_rows"],
         baseline_mermaid=build_snapshot_mermaid(report.get("baseline")),
         current_mermaid=build_snapshot_mermaid(report["current"]),
+        graph_quality_warning=(
+            GRAPH_QUALITY_TEMPLATE.render(
+                graph_quality=report.get("baseline_graph_quality"), snapshot_name="Baseline",
+            )
+            + GRAPH_QUALITY_TEMPLATE.render(
+                graph_quality=report.get("graph_quality"), snapshot_name="Current",
+            )
+        ),
         run_url=report.get("run_url", ""),
     )
     output_path.write_text(html)

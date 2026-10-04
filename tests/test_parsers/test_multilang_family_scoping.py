@@ -12,6 +12,7 @@ language-blind and fabricated cross-language edges on a Python+Java fixture:
 
 from __future__ import annotations
 
+from copy import deepcopy
 from pathlib import Path
 
 import pytest
@@ -218,6 +219,106 @@ def test_merge_reports_zero_collisions_when_there_are_none():
     )
     assert merged.metadata["fqn_collisions"] == 0
     assert "fqn_collision_details" not in merged.metadata
+
+
+def test_merge_preserves_language_keyed_dependency_resolution_metadata():
+    resolution = {
+        "import_specifiers": 2,
+        "resolved_local": 1,
+        "external": 0,
+        "unresolved_local": 1,
+        "metrics_qualified": True,
+    }
+    typescript = DependencyGraph(
+        entities={"web.App": _entity("web.App", "typescript")},
+        metadata={"dependency_resolution": {"typescript": resolution}},
+    )
+    java = DependencyGraph(entities={"server.App": _entity("server.App", "java")})
+
+    merged = merge_and_relink(java, typescript)
+
+    assert merged.metadata["dependency_resolution"] == {"typescript": resolution}
+    assert merged.metadata["fqn_collisions"] == 0
+
+
+def test_merge_keeps_valid_resolution_summary_after_malformed_metadata():
+    malformed = DependencyGraph(metadata={"dependency_resolution": {"typescript": None}})
+    summary = {"unresolved_local": 1, "metrics_qualified": True}
+    valid = DependencyGraph(metadata={"dependency_resolution": {"typescript": summary}})
+
+    merged = merge_and_relink(malformed, valid)
+
+    assert merged.metadata["dependency_resolution"]["typescript"] == summary
+
+
+@pytest.mark.parametrize("qualified_first", [False, True])
+def test_merge_qualifies_conflicting_dependency_resolution_without_mutating_inputs(
+    qualified_first,
+):
+    complete = DependencyGraph(
+        entities={"web.App": _entity("web.App", "typescript")},
+        metadata={
+            "dependency_resolution": {
+                "typescript": {
+                    "resolved_local": 1,
+                    "unresolved_local": 0,
+                    "linked_local": 0,
+                    "unlinked_local": 1,
+                    "configuration_errors": [],
+                    "metrics_qualified": False,
+                }
+            }
+        },
+    )
+    qualified = DependencyGraph(
+        entities={"web.Service": _entity("web.Service", "typescript")},
+        metadata={
+            "dependency_resolution": {
+                "typescript": {
+                    "resolved_local": 1,
+                    "unresolved_local": 1,
+                    "linked_local": 1,
+                    "unlinked_local": 0,
+                    "configuration_errors": [],
+                    "metrics_qualified": True,
+                }
+            }
+        },
+    )
+    graphs = (qualified, complete) if qualified_first else (complete, qualified)
+    before = [deepcopy(graph_to_dict(graph)) for graph in graphs]
+
+    merged = merge_and_relink(*graphs)
+
+    summary = merged.metadata["dependency_resolution"]["typescript"]
+    assert summary["metrics_qualified"] is True
+    assert any("conflict" in error.lower() for error in summary["configuration_errors"])
+    assert [graph_to_dict(graph) for graph in graphs] == before
+
+
+def test_merge_deduplicates_equal_dependency_resolution_summaries():
+    resolution = {
+        "resolved_local": 1,
+        "unresolved_local": 0,
+        "linked_local": 0,
+        "unlinked_local": 1,
+        "configuration_errors": [],
+        "metrics_qualified": False,
+    }
+    left = DependencyGraph(
+        entities={"web.App": _entity("web.App", "typescript")},
+        metadata={"dependency_resolution": {"typescript": deepcopy(resolution)}},
+    )
+    right = DependencyGraph(
+        entities={"web.Service": _entity("web.Service", "typescript")},
+        metadata={"dependency_resolution": {"typescript": deepcopy(resolution)}},
+    )
+    before = [deepcopy(graph_to_dict(graph)) for graph in (left, right)]
+
+    merged = merge_and_relink(left, right)
+
+    assert merged.metadata["dependency_resolution"] == {"typescript": resolution}
+    assert [graph_to_dict(graph) for graph in (left, right)] == before
 
 
 def test_polyglot_fixture_has_no_fabricated_cross_language_edges(fixtures_dir: Path):

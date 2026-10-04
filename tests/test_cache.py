@@ -8,6 +8,7 @@ from unittest.mock import Mock
 
 import pytest
 
+import arcade_agent.cache as graph_cache
 from arcade_agent.cache import (
     _typescript_configuration_files,
     cache_key,
@@ -194,6 +195,39 @@ def test_parse_reuses_current_typescript_cache(typescript_project, monkeypatch):
 
     assert warm == cold
     assert ("app.App", "target.Target", "import") in warm.to_edge_tuples()
+    parser.assert_not_called()
+
+
+@pytest.mark.parametrize("explicit_files", [False, True])
+def test_polyglot_parse_invalidates_cache_without_resolution_metadata(
+    tmp_path, monkeypatch, explicit_files,
+):
+    (tmp_path / "app.py").write_text("class App: pass\n")
+    (tmp_path / "caller.ts").write_text(
+        'import { Missing } from "./missing"; export class Caller extends Missing {}\n'
+    )
+    files = sorted(str(path) for path in tmp_path.iterdir()) if explicit_files else None
+    legacy = parse(
+        str(tmp_path), languages=["python", "typescript"], files=files, use_cache=False,
+    )
+    legacy.metadata.pop("dependency_resolution")
+    language = "python,typescript"
+    if files is None:
+        language += "|default=True;extra=()"
+    with monkeypatch.context() as previous_version:
+        previous_version.setattr(graph_cache, "_GRAPH_CACHE_SCHEMA_VERSION", "5")
+        key = cache_key(str(tmp_path), language, files)
+    put_cached_graph(str(tmp_path), key, legacy)
+
+    fresh = parse(str(tmp_path), languages=["python", "typescript"], files=files)
+
+    summary = fresh.metadata["dependency_resolution"]["typescript"]
+    assert summary["unresolved_local"] == 1
+    assert summary["metrics_qualified"] is True
+    parser = Mock(side_effect=AssertionError("Warm cache must preserve metadata"))
+    monkeypatch.setattr(TypeScriptParser, "parse", parser)
+    warm = parse(str(tmp_path), languages=["python", "typescript"], files=files)
+    assert warm == fresh
     parser.assert_not_called()
 
 
