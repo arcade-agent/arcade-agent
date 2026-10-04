@@ -5,6 +5,30 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Fixed
+
+- TypeScript/JavaScript imports now resolve through inherited JSONC configuration,
+  scoped solution references, declared npm workspaces and source re-exports.
+  Explicit asset imports do not count as unresolved source dependencies. Local
+  resolution failures and configuration diagnostics qualify graph-derived metrics;
+  resolved imports without entity edges remain informational.
+- Parse cache identity includes a graph schema version and resolver configuration
+  inputs, so unchanged sources do not retain graphs from older parser semantics.
+
+### Migration
+
+- Existing TypeScript baselines and CI drift reports can change after upgrading:
+  default, namespace and side-effect imports now contribute source-module edges,
+  `.js` specifiers can resolve to `.ts` sources, and unrelated repo-wide symbol names
+  no longer create import or inheritance edges. Numeric metric formulas and APIs are
+  unchanged. Review the first new graph, then regenerate its baseline using the same
+  language, algorithm and source exclusions before interpreting later drift.
+- Dependency-resolution metadata is retained in metric details and reports. A
+  comparison displays qualification for the baseline and current graph separately;
+  absence of unresolved discovered imports does not imply compiler-equivalent coverage.
+
 ## 0.3.0 — 2026-08-21
 
 Also in this release: **Rust** parser support, **polyglot multi-language
