@@ -157,7 +157,7 @@ python examples/basic_analysis.py arcade_core --language java
 
 Results (v1.2.0): 170 entities, 470 edges, 13 components recovered, 7 architectural smells detected (including a 7-component dependency cycle and concern overload in the Clustering module).
 
-See [`examples/arcade_core_report.html`](https://lemduc.github.io/arcade-agent/examples/arcade_core_report.html) for the full interactive report.
+See [`examples/arcade_core_report.html`](https://arcade-agent.github.io/arcade-agent/examples/arcade_core_report.html) for the full interactive report.
 
 ### Algorithm Comparison
 
@@ -167,7 +167,7 @@ Compare PKG, ACDC, ARC, and LIMBO recovery algorithms side-by-side on the same p
 python examples/compare_algorithms.py arcade_core --language java --use-llm
 ```
 
-See [`examples/comparison_report.html`](https://lemduc.github.io/arcade-agent/examples/comparison_report.html) for the full comparison report.
+See [`examples/comparison_report.html`](https://arcade-agent.github.io/arcade-agent/examples/comparison_report.html) for the full comparison report.
 
 ## MCP Server (AI Agent Integration)
 
