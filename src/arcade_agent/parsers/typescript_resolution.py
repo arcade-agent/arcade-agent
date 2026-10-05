@@ -15,13 +15,15 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, TypeAlias
 
 logger = logging.getLogger(__name__)
 
-_SOURCE_EXTENSIONS = (".tsx", ".ts", ".jsx", ".js", ".mjs", ".cjs")
+_SOURCE_EXTENSIONS = (".tsx", ".ts", ".mts", ".cts", ".jsx", ".js", ".mjs", ".cjs")
 _CONFIG_NAMES = ("tsconfig.json", "jsconfig.json")
 _MAX_DIAGNOSTICS = 100
 
@@ -81,7 +83,11 @@ class _PathMapping:
 class _CompilerConfig:
     path: Path
     base_url: Path | None = None
-    path_mappings: tuple[_PathMapping, ...] = ()
+    path_mappings: tuple[_PathMapping, ...] | None = None
+    files: tuple[Path, ...] | None = None
+    include: tuple[tuple[Path, str], ...] | None = None
+    exclude: tuple[tuple[Path, str], ...] | None = None
+    references: tuple[Path, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -89,6 +95,40 @@ class _WorkspacePackage:
     name: str
     directory: Path
     manifest: dict[str, Any]
+
+
+def is_source_import(specifier: str) -> bool:
+    """Keep package names, but omit explicit asset paths from source coverage."""
+    path = specifier.split("?", 1)[0].split("#", 1)[0]
+    suffix = Path(path).suffix.lower()
+    if not suffix or suffix in _SOURCE_EXTENSIONS:
+        return True
+    return suffix not in {
+        ".css", ".scss", ".sass", ".less", ".json", ".svg", ".png", ".jpg",
+        ".jpeg", ".gif", ".webp", ".avif", ".ico", ".woff", ".woff2", ".ttf",
+        ".eot", ".wasm", ".html", ".txt", ".md", ".yaml", ".yml", ".mp3",
+        ".wav", ".mp4",
+    }
+
+
+def _matches_source(path: Path, directory: Path, pattern: str) -> bool:
+    try:
+        relative = path.relative_to(directory).as_posix()
+    except ValueError:
+        return False
+    return _source_pattern_regex(pattern).fullmatch(relative) is not None
+
+
+@lru_cache(maxsize=4096)
+def _source_pattern_regex(pattern: str) -> re.Pattern[str]:
+    pattern = pattern.removeprefix("./").rstrip("/")
+    if not any(char in pattern for char in "*?") and not Path(pattern).suffix:
+        pattern += "/**/*"
+    expression = re.escape(pattern)
+    expression = expression.replace(r"\*\*/", "(?:.*/)?")
+    expression = expression.replace(r"\*\*", ".*")
+    expression = expression.replace(r"\*", "[^/]*").replace(r"\?", "[^/]")
+    return re.compile(expression)
 
 
 def _strip_jsonc_comments(text: str) -> str:
@@ -179,16 +219,6 @@ def _read_json_object(path: Path) -> dict[str, Any]:
     return value
 
 
-def _strip_source_extension(path_key: str) -> str:
-    for extension in _SOURCE_EXTENSIONS:
-        if path_key.endswith(extension):
-            path_key = path_key[:-len(extension)]
-            break
-    if path_key.endswith(".d"):
-        path_key = path_key[:-2]
-    return path_key
-
-
 def _as_string_list(value: object) -> tuple[str, ...]:
     if isinstance(value, str):
         return (value,)
@@ -229,11 +259,14 @@ class TypeScriptModuleResolver:
         self.module_by_pathkey = module_by_pathkey
         self.source_files = tuple(source_files)
         self._config_cache: dict[Path, _CompilerConfig] = {}
-        self._config_for_directory: dict[Path, tuple[_CompilerConfig, ...]] = {}
+        self._config_for_file: dict[Path, tuple[_CompilerConfig, ...]] = {}
+        self._config_candidates_for_directory: dict[Path, tuple[_CompilerConfig, ...]] = {}
         self._path_mapping_index: dict[
             Path, tuple[dict[str, _PathMapping], tuple[_PathMapping, ...]]
         ] = {}
         self._configuration_errors: set[str] = set()
+        self._path_cache: dict[Path, str | None] = {}
+        self._duplicate_workspace_names: set[str] = set()
         self._root_config_paths = self._discover_root_config_paths()
         self._workspace_packages = self._discover_workspace_packages()
 
@@ -275,42 +308,106 @@ class TypeScriptModuleResolver:
                 ValueError(f"unsupported package config extends: {specifier}"),
             )
             return None
+        return self._resolve_config_path(config_path, specifier)
+
+    def _resolve_config_path(self, config_path: Path, specifier: str) -> Path | None:
         target = Path(specifier)
         if not target.is_absolute():
             target = config_path.parent / target
+        try:
+            target = target.resolve()
+        except (OSError, RuntimeError) as error:
+            self._record_configuration_error(config_path, error)
+            return None
+        if not target.is_relative_to(self.root):
+            self._record_configuration_error(config_path, ValueError("config outside project root"))
+            return None
         if target.is_dir():
             target = target / "tsconfig.json"
-        elif target.suffix != ".json":
+        elif target.suffix not in (".json", ".jsonc"):
             target = target.with_suffix(".json")
-        return target.resolve()
+        try:
+            target = target.resolve()
+        except (OSError, RuntimeError) as error:
+            self._record_configuration_error(config_path, error)
+            return None
+        if not target.is_relative_to(self.root):
+            self._record_configuration_error(config_path, ValueError("config outside project root"))
+            return None
+        return target
 
     def _load_config(self, path: Path, ancestors: frozenset[Path]) -> _CompilerConfig:
-        path = path.resolve()
         cached = self._config_cache.get(path)
         if cached is not None:
             return cached
-        if path in ancestors:
-            self._record_configuration_error(path, ValueError("cyclic extends"))
-            return _CompilerConfig(path=path)
-
         try:
-            data = _read_json_object(path)
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError, TypeError) as error:
+            path = path.resolve()
+        except (OSError, RuntimeError) as error:
             self._record_configuration_error(path, error)
-            config = _CompilerConfig(path=path)
-            self._config_cache[path] = config
-            return config
+            return _CompilerConfig(path=path)
+        if not path.is_relative_to(self.root):
+            self._record_configuration_error(path, ValueError("config outside project root"))
+            return _CompilerConfig(path=path)
+        cached = self._config_cache.get(path)
+        if cached is not None:
+            return cached
+        data_by_path: dict[Path, dict[str, Any]] = {}
+        parents_by_path: dict[Path, list[Path]] = {}
+        active = set(ancestors)
+        stack = [(path, False)]
+        while stack:
+            current, complete = stack.pop()
+            if current in self._config_cache:
+                continue
+            if complete:
+                inherited = _CompilerConfig(path=current)
+                for parent_path in parents_by_path[current]:
+                    parent = self._config_cache.get(parent_path)
+                    if parent is None:
+                        continue
+                    inherited = _CompilerConfig(
+                        path=current,
+                        base_url=(parent.base_url if parent.base_url is not None
+                                  else inherited.base_url),
+                        path_mappings=(parent.path_mappings if parent.path_mappings is not None
+                                       else inherited.path_mappings),
+                        files=parent.files if parent.files is not None else inherited.files,
+                        include=parent.include if parent.include is not None else inherited.include,
+                        exclude=parent.exclude if parent.exclude is not None else inherited.exclude,
+                    )
+                self._config_cache[current] = self._compile_config(
+                    current, data_by_path.pop(current), inherited,
+                )
+                active.discard(current)
+                continue
+            if current in active:
+                self._record_configuration_error(current, ValueError("cyclic extends"))
+                continue
+            try:
+                data = _read_json_object(current)
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError, TypeError) as error:
+                self._record_configuration_error(current, error)
+                self._config_cache[current] = _CompilerConfig(path=current)
+                continue
+            data_by_path[current] = data
+            parents = []
+            for specifier in _as_string_list(data.get("extends")):
+                target = self._resolve_extends_path(current, specifier)
+                if target is None:
+                    continue
+                if not target.is_file():
+                    self._record_configuration_error(target, FileNotFoundError(target))
+                    continue
+                parents.append(target)
+            parents_by_path[current] = parents
+            active.add(current)
+            stack.append((current, True))
+            stack.extend((parent, False) for parent in reversed(parents))
+        return self._config_cache.get(path, _CompilerConfig(path=path))
 
-        inherited = _CompilerConfig(path=path)
-        extends_values = _as_string_list(data.get("extends"))
-        for extends_value in extends_values:
-            parent_path = self._resolve_extends_path(path, extends_value)
-            if parent_path is None:
-                continue
-            if not parent_path.is_file():
-                self._record_configuration_error(parent_path, FileNotFoundError(parent_path))
-                continue
-            inherited = self._load_config(parent_path, ancestors | {path})
+    def _compile_config(
+        self, path: Path, data: dict[str, Any], inherited: _CompilerConfig,
+    ) -> _CompilerConfig:
 
         compiler_options = data.get("compilerOptions")
         if not isinstance(compiler_options, dict):
@@ -319,19 +416,27 @@ class TypeScriptModuleResolver:
         base_url = inherited.base_url
         raw_base_url = compiler_options.get("baseUrl")
         if isinstance(raw_base_url, str):
-            base_url = (path.parent / raw_base_url).resolve()
+            if "${configDir}" in raw_base_url:
+                self._record_configuration_error(path, ValueError("unsupported ${configDir}"))
+            try:
+                base_url = (path.parent / raw_base_url).resolve()
+            except (OSError, RuntimeError) as error:
+                self._record_configuration_error(path, error)
+                return _CompilerConfig(path=path)
 
         mappings = inherited.path_mappings
         raw_paths = compiler_options.get("paths")
         if isinstance(raw_paths, dict):
-            mapping_base = base_url or path.parent
+            if any("${configDir}" in target for targets in raw_paths.values()
+                   for target in _as_string_list(targets)):
+                self._record_configuration_error(path, ValueError("unsupported ${configDir}"))
             mappings = tuple(
                 sorted(
                     (
                         _PathMapping(
                             pattern=pattern,
                             targets=_as_string_list(targets),
-                            base_directory=mapping_base,
+                            base_directory=path.parent,
                         )
                         for pattern, targets in raw_paths.items()
                         if isinstance(pattern, str) and _as_string_list(targets)
@@ -340,45 +445,114 @@ class TypeScriptModuleResolver:
                 )
             )
 
-        config = _CompilerConfig(path=path, base_url=base_url, path_mappings=mappings)
-        self._config_cache[path] = config
+        files = inherited.files
+        if "files" in data:
+            resolved_files = []
+            for value in _as_string_list(data["files"]):
+                try:
+                    resolved_files.append((path.parent / value).resolve())
+                except (OSError, RuntimeError) as error:
+                    self._record_configuration_error(path, error)
+            files = tuple(resolved_files)
+        include = inherited.include
+        if "include" in data:
+            include = tuple((path.parent, value) for value in _as_string_list(data["include"]))
+        exclude = inherited.exclude
+        if "exclude" in data:
+            exclude = tuple((path.parent, value) for value in _as_string_list(data["exclude"]))
+        references = []
+        raw_references = data.get("references", [])
+        if isinstance(raw_references, list):
+            for reference in raw_references:
+                if isinstance(reference, dict) and isinstance(reference.get("path"), str):
+                    target = self._resolve_config_path(path, reference["path"])
+                    if target is not None:
+                        references.append(target)
+        config = _CompilerConfig(
+            path=path, base_url=base_url, path_mappings=mappings,
+            files=files, include=include, exclude=exclude, references=tuple(references),
+        )
         return config
 
     def _configs_for(self, importing: Path) -> tuple[_CompilerConfig, ...]:
-        directory = importing.parent
-        cached = self._config_for_directory.get(directory)
+        cached = self._config_for_file.get(importing)
+        if cached is not None:
+            return cached
+        configs = []
+        for config in self._config_candidates_for(importing.parent):
+            if config.files is not None and importing in config.files:
+                configs.append(config)
+                continue
+            include = config.include
+            if include is None:
+                include = () if config.files is not None else ((config.path.parent, "**/*"),)
+            excluded = any(
+                _matches_source(importing, origin, pattern)
+                for origin, pattern in config.exclude or ()
+            )
+            if not excluded and any(
+                _matches_source(importing, origin, pattern) for origin, pattern in include
+            ):
+                configs.append(config)
+        result = tuple(configs)
+        self._config_for_file[importing] = result
+        return result
+
+    def _config_candidates_for(self, directory: Path) -> tuple[_CompilerConfig, ...]:
+        cached = self._config_candidates_for_directory.get(directory)
         if cached is not None:
             return cached
 
-        configs: list[_CompilerConfig] = []
+        candidates: list[Path] = []
         current = directory
         while current == self.root or self.root in current.parents:
             found = False
             for name in _CONFIG_NAMES:
                 candidate = current / name
                 if candidate.is_file():
-                    configs.append(self._load_config(candidate, frozenset()))
+                    candidates.append(candidate)
                     found = True
                     break
             if found or current == self.root:
                 break
             current = current.parent
 
-        if not configs:
-            configs.extend(
-                self._load_config(path, frozenset()) for path in self._root_config_paths
-            )
+        if not candidates:
+            candidates.extend(self._root_config_paths)
+        elif candidates[0].parent != self.root:
+            nearest = self._load_config(candidates[0], frozenset())
+            for name in _CONFIG_NAMES:
+                candidate = self.root / name
+                if (candidate.is_file() and nearest.base_url is None
+                        and nearest.path_mappings is None and not nearest.references):
+                    root_config = self._load_config(candidate, frozenset())
+                    if root_config.references:
+                        candidates.append(candidate)
+
+        configs: list[_CompilerConfig] = []
+        seen: set[Path] = set()
+        stack = list(reversed(candidates))
+        while stack:
+            path = stack.pop()
+            if path in seen:
+                continue
+            seen.add(path)
+            config = self._load_config(path, frozenset())
+            configs.append(config)
+            stack.extend(reversed(config.references))
         result = tuple(configs)
-        self._config_for_directory[directory] = result
+        self._config_candidates_for_directory[directory] = result
         return result
 
     def _safe_glob(self, pattern: str) -> list[Path]:
         normalized = pattern.removeprefix("./")
-        if not normalized or normalized.startswith(("!", "/")):
+        if not normalized or normalized.startswith(("!", "/")) or ".." in Path(normalized).parts:
             return []
         try:
-            return sorted(self.root.glob(normalized))
-        except (OSError, ValueError) as error:
+            return sorted(path for path in self.root.glob(normalized)
+                          if "node_modules" not in path.relative_to(self.root).parts
+                          and path.resolve().is_relative_to(self.root))
+        except (OSError, RuntimeError, ValueError) as error:
             self._record_configuration_error(self.root / "package.json", error)
             return []
 
@@ -386,6 +560,11 @@ class TypeScriptModuleResolver:
         manifests: set[Path] = set()
         root_manifest = self.root / "package.json"
         if root_manifest.is_file():
+            if not root_manifest.resolve().is_relative_to(self.root):
+                self._record_configuration_error(
+                    root_manifest, ValueError("manifest outside project root"),
+                )
+                return []
             manifests.add(root_manifest)
             try:
                 data = _read_json_object(root_manifest)
@@ -398,28 +577,14 @@ class TypeScriptModuleResolver:
             for pattern in _as_string_list(raw_workspaces):
                 for match in self._safe_glob(pattern):
                     manifest = match if match.name == "package.json" else match / "package.json"
-                    if manifest.is_file():
+                    if manifest.is_file() and manifest.resolve().is_relative_to(self.root):
                         manifests.add(manifest.resolve())
 
-        # Explicit file lists may represent a package without a root workspace
-        # declaration.  Its nearest manifest is still an authoritative local
-        # package boundary.
-        for source_file in self.source_files:
-            current = source_file.parent
-            while current == self.root or self.root in current.parents:
-                manifest = current / "package.json"
-                if manifest.is_file():
-                    manifests.add(manifest.resolve())
-                    break
-                if current == self.root:
-                    break
-                current = current.parent
         return sorted(manifests)
 
     def _discover_workspace_packages(self) -> tuple[_WorkspacePackage, ...]:
         packages: list[_WorkspacePackage] = []
         seen_names: set[str] = set()
-        source_files = set(self.source_files)
         for manifest_path in self._manifest_paths():
             try:
                 manifest = _read_json_object(manifest_path)
@@ -430,11 +595,8 @@ class TypeScriptModuleResolver:
             if not isinstance(name, str) or not name:
                 continue
             directory = manifest_path.parent.resolve()
-            if directory != self.root and not any(
-                directory in source.parents for source in source_files
-            ):
-                continue
             if name in seen_names:
+                self._duplicate_workspace_names.add(name)
                 self._record_configuration_error(
                     manifest_path,
                     ValueError(f"duplicate workspace package name: {name}"),
@@ -442,19 +604,50 @@ class TypeScriptModuleResolver:
                 continue
             seen_names.add(name)
             packages.append(_WorkspacePackage(name, directory, manifest))
-        return tuple(sorted(packages, key=lambda package: (-len(package.name), package.name)))
+        return tuple(sorted(
+            (package for package in packages
+             if package.name not in self._duplicate_workspace_names),
+            key=lambda package: (-len(package.name), package.name),
+        ))
 
     def _lookup_path(self, target: Path) -> str | None:
+        if target in self._path_cache:
+            return self._path_cache[target]
+        original = target
         try:
             target = target.resolve()
             relative = target.relative_to(self.root)
-        except (OSError, ValueError):
+        except (OSError, RuntimeError, ValueError):
+            self._path_cache[original] = None
             return None
-        key = _strip_source_extension(relative.as_posix()).rstrip("/")
-        for candidate in (key, f"{key}/index"):
+        key = relative.as_posix().rstrip("/")
+        suffix = target.suffix
+        substitutions = {
+            ".js": (".ts", ".tsx", ".d.ts", ".js", ".jsx"),
+            ".jsx": (".tsx", ".d.ts", ".jsx"),
+            ".mjs": (".mts", ".d.mts", ".mjs"),
+            ".cjs": (".cts", ".d.cts", ".cjs"),
+        }
+        if suffix in _SOURCE_EXTENSIONS:
+            base = key[:-len(suffix)]
+            extensions = substitutions.get(suffix, (suffix,))
+            candidates = [base + extension for extension in extensions]
+        else:
+            extensions = (".ts", ".tsx", ".d.ts", ".js", ".jsx")
+            candidates = [key + extension for extension in extensions]
+            candidates.extend(f"{key}/index{extension}" for extension in extensions)
+        for candidate in candidates:
             module = self.module_by_pathkey.get(candidate)
             if module is not None:
+                self._path_cache[original] = module
                 return module
+            source = self.root / candidate
+            if source.is_symlink():
+                module = self._lookup_path(source)
+                if module is not None:
+                    self._path_cache[original] = module
+                    return module
+        self._path_cache[original] = None
         return None
 
     def _resolve_path_mappings(
@@ -467,11 +660,11 @@ class TypeScriptModuleResolver:
             if indexed is None:
                 exact = {
                     mapping.pattern: mapping
-                    for mapping in config.path_mappings
+                    for mapping in config.path_mappings or ()
                     if "*" not in mapping.pattern
                 }
                 wildcard = tuple(
-                    mapping for mapping in config.path_mappings if "*" in mapping.pattern
+                    mapping for mapping in config.path_mappings or () if "*" in mapping.pattern
                 )
                 indexed = (exact, wildcard)
                 self._path_mapping_index[config.path] = indexed
@@ -484,7 +677,7 @@ class TypeScriptModuleResolver:
                     continue
                 for target_pattern in mapping.targets:
                     target = target_pattern.replace("*", capture)
-                    module = self._lookup_path(mapping.base_directory / target)
+                    module = self._lookup_path((config.base_url or mapping.base_directory) / target)
                     if module is not None:
                         return module, True
                 # TypeScript chooses the most specific matching paths rule.  A
@@ -524,6 +717,9 @@ class TypeScriptModuleResolver:
             if target.startswith("."):
                 candidates.append(package.directory / target)
 
+        if exports is not None:
+            return candidates
+
         if not subpath:
             for field in ("types", "typings", "source", "module", "main"):
                 manifest_target = package.manifest.get(field)
@@ -537,6 +733,9 @@ class TypeScriptModuleResolver:
         return candidates
 
     def _resolve_workspace(self, specifier: str) -> tuple[str | None, bool]:
+        if any(specifier == name or specifier.startswith(f"{name}/")
+               for name in self._duplicate_workspace_names):
+            return None, True
         for package in self._workspace_packages:
             if specifier != package.name and not specifier.startswith(f"{package.name}/"):
                 continue
@@ -550,6 +749,13 @@ class TypeScriptModuleResolver:
 
     def resolve(self, specifier: str, importing: Path) -> ImportResolution:
         """Classify and, when possible, resolve one import specifier."""
+        if not is_source_import(specifier):
+            return ExternalImport()
+        if specifier.startswith("#"):
+            self._record_configuration_error(
+                importing, ValueError("unsupported package.json #imports"),
+            )
+            return UnresolvedLocal("package.json #imports are not supported")
         if specifier.startswith("."):
             module = self._lookup_path(importing.parent / specifier)
             if module is not None:
@@ -621,7 +827,7 @@ class TypeScriptModuleResolver:
             for specifier in by_specifier
         )
         configuration_incomplete = bool(configuration_errors and has_config_sensitive_import)
-        metrics_qualified = bool(unresolved or unlinked or configuration_incomplete)
+        metrics_qualified = bool(unresolved or configuration_incomplete)
 
         unresolved_details = [
             {

@@ -1,4 +1,4 @@
-"""Parse result caching based on file modification times."""
+"""Parse result caching based on graph schema and file modification times."""
 
 import hashlib
 import json
@@ -7,12 +7,14 @@ import os
 import tempfile
 from pathlib import Path
 
+from arcade_agent.parsers import typescript_resolution
 from arcade_agent.parsers.graph import DependencyGraph
 from arcade_agent.serialization import dict_to_graph, graph_to_dict
 
 logger = logging.getLogger(__name__)
 
 _CACHE_DIR = ".arcade-cache"
+_GRAPH_CACHE_SCHEMA_VERSION = "5"
 
 
 def _cache_dir(project_root: Path) -> Path:
@@ -22,10 +24,10 @@ def _cache_dir(project_root: Path) -> Path:
 
 _SOURCE_SUFFIXES = {
     ".java", ".py", ".c", ".cpp", ".h", ".hpp", ".ts", ".tsx", ".js", ".jsx",
-    ".mjs", ".cjs", ".go", ".kt", ".kts", ".rs",
+    ".mts", ".cts", ".mjs", ".cjs", ".go", ".kt", ".kts", ".rs",
 }
 
-_TYPESCRIPT_SOURCE_SUFFIXES = {".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"}
+_TYPESCRIPT_SOURCE_SUFFIXES = {".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs"}
 _CONFIG_SCAN_EXCLUDED_DIRS = {
     ".arcade-cache",
     ".git",
@@ -43,7 +45,9 @@ _CONFIG_SCAN_EXCLUDED_DIRS = {
 
 def _typescript_configuration_files(root: Path) -> set[str]:
     """Return manifests/configs that can change TypeScript graph identity."""
+    root = root.resolve()
     configuration_files: set[str] = set()
+    pending: list[Path] = []
     for directory, directories, filenames in os.walk(root):
         directories[:] = sorted(
             name for name in directories if name not in _CONFIG_SCAN_EXCLUDED_DIRS
@@ -53,7 +57,50 @@ def _typescript_configuration_files(root: Path) -> set[str]:
                 filename in {"package.json", "jsconfig.json"}
                 or filename.startswith("tsconfig") and filename.endswith(".json")
             ):
-                configuration_files.add(str(Path(directory) / filename))
+                try:
+                    path = (Path(directory) / filename).resolve()
+                except (OSError, RuntimeError):
+                    continue
+                if not path.is_relative_to(root):
+                    continue
+                configuration_files.add(str(path))
+                if filename != "package.json":
+                    pending.append(path)
+
+    resolver = typescript_resolution.TypeScriptModuleResolver(root, {}, [])
+    visited: set[Path] = set()
+    while pending:
+        path = pending.pop()
+        if path in visited:
+            continue
+        visited.add(path)
+        try:
+            data = typescript_resolution._read_json_object(path)
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, TypeError):
+            continue
+        targets: list[Path] = []
+        for specifier in typescript_resolution._as_string_list(data.get("extends")):
+            try:
+                target = resolver._resolve_extends_path(path, specifier)
+            except (OSError, RuntimeError, ValueError):
+                continue
+            if target is not None:
+                targets.append(target)
+        references = data.get("references", [])
+        if isinstance(references, list):
+            for reference in references:
+                if not isinstance(reference, dict) or not isinstance(reference.get("path"), str):
+                    continue
+                try:
+                    target = resolver._resolve_config_path(path, reference["path"])
+                except (OSError, RuntimeError, ValueError):
+                    continue
+                if target is not None:
+                    targets.append(target)
+        for target in targets:
+            configuration_files.add(str(target))
+            if target not in visited:
+                pending.append(target)
     return configuration_files
 
 
@@ -63,13 +110,14 @@ def cache_key(
     files: list[str] | None,
     exclude_tests: bool = True,
 ) -> str:
-    """Compute a cache key from source path, language, and file mtimes.
+    """Compute a cache key from graph schema, source path, language, and file mtimes.
 
     The key is a SHA-256 hash of the sorted file paths and their modification
     times, ensuring the cache is automatically invalidated when any source file
-    changes. Non-source resolver inputs are included for languages whose graph
+    changes. Bump the graph schema version when parser behavior changes.
+    Non-source resolver inputs are included for languages whose graph
     identity depends on them (Cargo manifests for Rust; package/tsconfig files
-    for TypeScript/JavaScript).
+    and their declared config dependencies for TypeScript/JavaScript).
 
     Args:
         source_path: Root directory of the project.
@@ -84,6 +132,7 @@ def cache_key(
     """
     root = Path(source_path).resolve()
     hasher = hashlib.sha256()
+    hasher.update(f"graph-schema:{_GRAPH_CACHE_SCHEMA_VERSION}".encode())
     hasher.update(str(root).encode())
     hasher.update((language or "auto").encode())
     hasher.update(b"tests:excluded" if exclude_tests else b"tests:included")

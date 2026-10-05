@@ -23,13 +23,14 @@ from arcade_agent.parsers.typescript_resolution import (
     ImportResolution,
     ResolvedLocal,
     TypeScriptModuleResolver,
+    is_source_import,
 )
 
 TS_LANGUAGE = Language(ts_ts.language_typescript())
 TSX_LANGUAGE = Language(ts_ts.language_tsx())
 logger = logging.getLogger(__name__)
 
-_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"]
+_EXTENSIONS = [".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs"]
 
 # Skip very large files: these are almost always minified/bundled vendor output
 # (e.g. a 3 MB terminal.js), not human-authored source. Walking one flat
@@ -54,18 +55,26 @@ class _Declaration:
     node: Node
     owner: str | None = None
     default_export: bool = False
+    exported: bool = False
+
+
+@dataclass(frozen=True)
+class _ReExport:
+    source: str
+    names: tuple[tuple[str, str], ...]
+    wildcard: bool = False
 
 
 @dataclass
 class _ExtractedFile:
     path: Path
     module: str
-    path_key: str
     entities: dict[str, Entity]
     imports: tuple[_Import, ...]
     references: dict[str, set[str]]
     member_references: dict[str, dict[str, set[str]]]
-    default_export: str | None
+    exports: dict[str, str]
+    reexports: tuple[_ReExport, ...]
 
 
 def _get_text(node: Node | None) -> str:
@@ -74,9 +83,9 @@ def _get_text(node: Node | None) -> str:
 
 
 def _strip_ext(name: str) -> str:
-    for extension in _EXTENSIONS:
-        if name.endswith(extension):
-            name = name[:-len(extension)]
+    for ext in _EXTENSIONS:
+        if name.endswith(ext):
+            name = name[: -len(ext)]
             break
     if name.endswith(".d"):  # foo.d.ts -> foo
         name = name[:-2]
@@ -84,37 +93,23 @@ def _strip_ext(name: str) -> str:
 
 
 def _module_name(file_path: Path, root: Path) -> str:
-    """Return a dotted module name; a trailing ``index`` is omitted."""
-    relative = file_path.relative_to(root)
-    parts = list(relative.parts)
+    """Dotted module name from a file path; trailing 'index' is dropped."""
+    rel = file_path.relative_to(root)
+    parts = list(rel.parts)
     parts[-1] = _strip_ext(parts[-1])
     if parts and parts[-1] == "index":
         parts = parts[:-1]
     return ".".join(parts)
 
 
-def _path_key(file_path: Path, root: Path) -> str:
-    """Return a POSIX relative path without its source extension."""
-    relative = file_path.relative_to(root)
-    parts = list(relative.parts)
-    parts[-1] = _strip_ext(parts[-1])
-    return "/".join(parts)
-
-
 def _unwrap_export(node: Node) -> Node:
-    """Return the declaration wrapped by an export statement, if present."""
+    """export <decl> wraps the real declaration; return the inner node."""
     if node.type == "export_statement":
-        supported = {
-            "class_declaration",
-            "abstract_class_declaration",
-            "interface_declaration",
-            "enum_declaration",
-            "function_declaration",
-            "lexical_declaration",
-            "variable_declaration",
-        }
         for child in node.children:
-            if child.type in supported:
+            if child.type in ("class_declaration", "abstract_class_declaration",
+                              "interface_declaration", "enum_declaration",
+                              "function_declaration", "lexical_declaration",
+                              "variable_declaration"):
                 return child
     return node
 
@@ -147,35 +142,28 @@ def _heritage(class_node: Node) -> tuple[str | None, list[str]]:
 
 
 def _arrow_or_func_name(lexical_node: Node) -> tuple[str | None, Node | None]:
-    """Return the name/declarator for a variable-bound function."""
-    for declarator in lexical_node.children:
-        if declarator.type != "variable_declarator":
+    """For `const foo = () => {}` / `const foo = function(){}`, return (name, body_node)."""
+    for declr in lexical_node.children:
+        if declr.type != "variable_declarator":
             continue
-        name_node = declarator.child_by_field_name("name")
-        value = declarator.child_by_field_name("value")
-        if (
-            name_node is not None
-            and value is not None
-            and value.type in ("arrow_function", "function_expression", "function")
-        ):
-            return _get_text(name_node), declarator
+        name_node = declr.child_by_field_name("name")
+        value = declr.child_by_field_name("value")
+        if name_node and value and value.type in ("arrow_function", "function_expression",
+                                                   "function"):
+            return _get_text(name_node), declr
     return None, None
 
 
 def _referenced_names(node: Node) -> set[str]:
-    """Collect identifiers/type names iteratively so source depth is untrusted."""
+    """Identifiers / type names used within a node (for edge filtering)."""
     names: set[str] = set()
     stack = [node]
     while stack:
-        current = stack.pop()
-        if current.type in (
-            "identifier",
-            "type_identifier",
-            "property_identifier",
-            "shorthand_property_identifier",
-        ):
-            names.add(_get_text(current))
-        stack.extend(current.children)
+        n = stack.pop()
+        if n.type in ("identifier", "type_identifier", "property_identifier",
+                     "shorthand_property_identifier"):
+            names.add(_get_text(n))
+        stack.extend(n.children)
     return names
 
 
@@ -244,9 +232,35 @@ def _extract_imports(root_node: Node) -> tuple[_Import, ...]:
                         local = _get_text(alias) if alias is not None else original
                         if original:
                             names.append((original, local))
-        if source:
+        if source and is_source_import(source):
             imports.append(_Import(source, tuple(names), tuple(namespaces), default))
     return tuple(imports)
+
+
+def _extract_reexports(root_node: Node) -> tuple[_ReExport, ...]:
+    reexports = []
+    for statement in root_node.children:
+        if statement.type != "export_statement":
+            continue
+        source_node = statement.child_by_field_name("source")
+        if source_node is None:
+            continue
+        source = _get_text(source_node).strip("\"'")
+        if not is_source_import(source):
+            continue
+        names = []
+        for clause in statement.children:
+            if clause.type != "export_clause":
+                continue
+            for specifier in clause.children:
+                if specifier.type != "export_specifier":
+                    continue
+                name = _get_text(specifier.child_by_field_name("name"))
+                alias = specifier.child_by_field_name("alias")
+                names.append((name, _get_text(alias) if alias is not None else name))
+        wildcard = any(child.type == "*" for child in statement.children)
+        reexports.append(_ReExport(source, tuple(names), wildcard))
+    return tuple(reexports)
 
 
 def _extract_file(path: Path, root: Path, parser: Parser) -> _ExtractedFile | None:
@@ -261,12 +275,15 @@ def _extract_file(path: Path, root: Path, parser: Parser) -> _ExtractedFile | No
     package = ".".join(module.split(".")[:-1]) if "." in module else ""
     relative_path = str(path.relative_to(root))
     imports = _extract_imports(root_node)
+    reexports = _extract_reexports(root_node)
+    imports += tuple(_Import(item.source, item.names, (), None) for item in reexports)
     import_sources = [item.source for item in imports]
     declarations: list[_Declaration] = []
 
     for top_level in root_node.children:
         node = _unwrap_export(top_level)
         is_default = _is_default_export(top_level)
+        exported = top_level.type == "export_statement"
         if node.type in ("class_declaration", "abstract_class_declaration"):
             name_node = node.child_by_field_name("name")
             if name_node is None:
@@ -281,6 +298,7 @@ def _extract_file(path: Path, root: Path, parser: Parser) -> _ExtractedFile | No
                     tuple(interfaces),
                     node,
                     default_export=is_default,
+                    exported=exported,
                 )
             )
             class_fqn = f"{module}.{name}" if module else name
@@ -305,13 +323,14 @@ def _extract_file(path: Path, root: Path, parser: Parser) -> _ExtractedFile | No
             name_node = node.child_by_field_name("name")
             if name_node is not None:
                 declarations.append(
-                    _Declaration(_get_text(name_node), "interface", None, (), node)
+                    _Declaration(_get_text(name_node), "interface", None, (), node,
+                                 default_export=is_default, exported=exported)
                 )
         elif node.type == "enum_declaration":
             name_node = node.child_by_field_name("name")
             if name_node is not None:
                 declarations.append(
-                    _Declaration(_get_text(name_node), "enum", None, (), node)
+                    _Declaration(_get_text(name_node), "enum", None, (), node, exported=exported)
                 )
         elif node.type == "function_declaration":
             name_node = node.child_by_field_name("name")
@@ -324,19 +343,21 @@ def _extract_file(path: Path, root: Path, parser: Parser) -> _ExtractedFile | No
                         (),
                         node,
                         default_export=is_default,
+                        exported=exported,
                     )
                 )
         elif node.type in ("lexical_declaration", "variable_declaration"):
             function_name, declaration_node = _arrow_or_func_name(node)
             if function_name is not None and declaration_node is not None:
                 declarations.append(
-                    _Declaration(function_name, "function", None, (), declaration_node)
+                    _Declaration(function_name, "function", None, (), declaration_node,
+                                 exported=exported)
                 )
 
     entities: dict[str, Entity] = {}
     references: dict[str, set[str]] = {}
     member_references: dict[str, dict[str, set[str]]] = {}
-    default_export: str | None = None
+    exports: dict[str, str] = {}
     if not declarations and module:
         fqn = module
         entities[fqn] = Entity(
@@ -372,17 +393,47 @@ def _extract_file(path: Path, root: Path, parser: Parser) -> _ExtractedFile | No
             references[fqn] = _referenced_names(declaration.node)
             member_references[fqn] = _member_references(declaration.node)
             if declaration.default_export:
-                default_export = fqn
+                exports["default"] = fqn
+            if declaration.exported and not declaration.default_export:
+                exports[declaration.name] = fqn
+
+    for statement in root_node.children:
+        if statement.type != "export_statement" or statement.child_by_field_name("source"):
+            continue
+        value = statement.child_by_field_name("value")
+        if _is_default_export(statement) and value is not None and value.type == "identifier":
+            fqn = f"{module}.{_get_text(value)}" if module else _get_text(value)
+            if fqn in entities:
+                exports["default"] = fqn
+        for clause in statement.children:
+            if clause.type != "export_clause":
+                continue
+            for specifier in clause.children:
+                if specifier.type != "export_specifier":
+                    continue
+                local = _get_text(specifier.child_by_field_name("name"))
+                alias = specifier.child_by_field_name("alias")
+                name = _get_text(alias) if alias is not None else local
+                fqn = f"{module}.{local}" if module else local
+                if fqn in entities:
+                    exports[name] = fqn
+                else:
+                    for imported in imports:
+                        for original, binding in imported.names:
+                            if binding == local:
+                                reexports += (_ReExport(imported.source, ((original, name),)),)
+                        if imported.default == local:
+                            reexports += (_ReExport(imported.source, (("default", name),)),)
 
     return _ExtractedFile(
         path=path,
         module=module,
-        path_key=_path_key(path, root),
         entities=entities,
         imports=imports,
         references=references,
         member_references=member_references,
-        default_export=default_export,
+        exports=exports,
+        reexports=reexports,
     )
 
 
@@ -412,7 +463,11 @@ class TypeScriptParser(LanguageParser):
         entity_references: dict[str, set[str]] = {}
         entity_member_references: dict[str, dict[str, set[str]]] = {}
         entity_file: dict[str, Path] = {}
-        default_export_by_module: dict[str, str] = {}
+        exports_by_module: dict[str, dict[str, str]] = {}
+        reexports_by_module: dict[str, tuple[_ReExport, ...]] = {}
+        file_by_module: dict[str, Path] = {}
+        module_entity_by_module: dict[str, str] = {}
+        module_by_file: dict[Path, str] = {}
         parsed_files: list[Path] = []
         duplicate_entities: list[tuple[str, str]] = []
 
@@ -421,8 +476,11 @@ class TypeScriptParser(LanguageParser):
             try:
                 resolved = candidate.resolve()
                 resolved.relative_to(root)
-            except (OSError, ValueError):
-                logger.warning("Skipping TypeScript source outside project root: %s", candidate)
+            except (OSError, RuntimeError, ValueError) as error:
+                logger.warning(
+                    "Skipping TypeScript source after path failure (%s): %s",
+                    type(error).__name__, candidate,
+                )
                 continue
             resolved_files.append(resolved)
 
@@ -444,9 +502,11 @@ class TypeScriptParser(LanguageParser):
 
             parsed_files.append(source_file)
             imports_by_file[source_file] = extracted.imports
-            module_by_pathkey[extracted.path_key] = extracted.module
-            if extracted.path_key.endswith("/index"):
-                module_by_pathkey[extracted.path_key[:-len("/index")]] = extracted.module
+            source_key = source_file.relative_to(root).as_posix()
+            reexports_by_module[source_key] = extracted.reexports
+            file_by_module[source_key] = source_file
+            module_by_file[source_file] = extracted.module
+            module_by_pathkey[source_key] = source_key
 
             for fqn, entity in extracted.entities.items():
                 if fqn in entities:
@@ -460,9 +520,12 @@ class TypeScriptParser(LanguageParser):
                 if fqn not in members:
                     members.add(fqn)
                     packages.setdefault(entity.package, []).append(fqn)
-            if extracted.default_export is not None and extracted.default_export in entities:
-                default_export_by_module[extracted.module] = extracted.default_export
-
+            exports_by_module[source_key] = {
+                name: fqn for name, fqn in extracted.exports.items()
+                if entity_file.get(fqn) == source_file
+            }
+            if entity_file.get(extracted.module) == source_file:
+                module_entity_by_module[source_key] = extracted.module
         if duplicate_entities:
             logger.warning(
                 "Kept the first declaration for %d duplicate TypeScript entity FQN(s) "
@@ -471,14 +534,6 @@ class TypeScriptParser(LanguageParser):
                 duplicate_entities[0][0],
                 duplicate_entities[0][1],
             )
-
-        names_to_fqns: dict[str, list[str]] = {}
-        for entity in entities.values():
-            if entity.kind != "method":
-                names_to_fqns.setdefault(entity.name, []).append(entity.fqn)
-        unique_fqn_by_name = {
-            name: fqns[0] for name, fqns in names_to_fqns.items() if len(fqns) == 1
-        }
 
         resolver = TypeScriptModuleResolver(root, module_by_pathkey, parsed_files)
         resolutions: dict[Path, dict[str, ImportResolution]] = {
@@ -489,15 +544,41 @@ class TypeScriptParser(LanguageParser):
             for path, imports in imports_by_file.items()
         }
         linked_local: set[tuple[Path, str]] = set()
+        target_cache: dict[tuple[str, str], str | None] = {}
 
         def target_for(module: str, name: str) -> str | None:
-            exact = f"{module}.{name}" if module else name
-            if exact in entities:
-                return exact
-            # Re-export barrels often contain no declaration themselves. A
-            # unique repository-wide symbol is a safe fallback; ambiguous leaf
-            # names remain explicitly unlinked in coverage metadata.
-            return unique_fqn_by_name.get(name)
+            key = (module, name)
+            if key in target_cache:
+                return target_cache[key]
+            targets: set[str] = set()
+            seen: set[tuple[str, str]] = set()
+            stack = [key]
+            while stack:
+                current_module, current_name = stack.pop()
+                if (current_module, current_name) in seen:
+                    continue
+                seen.add((current_module, current_name))
+                direct = exports_by_module.get(current_module, {}).get(current_name)
+                if direct is not None:
+                    targets.add(direct)
+                    continue
+                reexports = reexports_by_module.get(current_module, ())
+                named = [(item, original) for item in reexports
+                         for original, exported in item.names if exported == current_name]
+                candidates = named or [
+                    (item, current_name) for item in reexports
+                    if item.wildcard and current_name != "default"
+                ]
+                source_file = file_by_module.get(current_module)
+                if source_file is None:
+                    continue
+                for item, original in candidates:
+                    resolution = resolutions.get(source_file, {}).get(item.source)
+                    if isinstance(resolution, ResolvedLocal):
+                        stack.append((resolution.module, original))
+            target = next(iter(targets)) if len(targets) == 1 else None
+            target_cache[key] = target
+            return target
 
         def emit(source: str, target: str | None) -> bool:
             if target is None or target not in entities or source == target:
@@ -526,9 +607,7 @@ class TypeScriptParser(LanguageParser):
                 if imported.default is not None and (
                     imported.default in references or entity.kind == "module"
                 ):
-                    target = default_export_by_module.get(resolution.module)
-                    if target is None and resolution.module in entities:
-                        target = resolution.module
+                    target = target_for(resolution.module, "default")
                     emitted = emit(fqn, target) or emitted
 
                 for namespace in imported.namespaces:
@@ -540,25 +619,45 @@ class TypeScriptParser(LanguageParser):
                             emit(fqn, target_for(resolution.module, member))
                             or namespace_emitted
                         )
-                    if not namespace_emitted and resolution.module in entities:
-                        namespace_emitted = emit(fqn, resolution.module)
+                    module_entity = module_entity_by_module.get(resolution.module)
+                    if not namespace_emitted and module_entity is not None:
+                        namespace_emitted = emit(fqn, module_entity)
                     emitted = emitted or namespace_emitted
 
                 if not imported.names and not imported.namespaces and imported.default is None:
-                    if resolution.module in entities:
-                        emitted = emit(fqn, resolution.module) or emitted
+                    module_entity = module_entity_by_module.get(resolution.module)
+                    if module_entity is not None:
+                        emitted = emit(fqn, module_entity) or emitted
 
                 if emitted:
                     linked_local.add((importing_file, imported.source))
 
+            def heritage_target(name: str) -> str | None:
+                module = module_by_file[importing_file]
+                local = f"{module}.{name}" if module else name
+                if local in entities:
+                    return local
+                for imported in imports_by_file.get(importing_file, ()):
+                    resolution = file_resolution.get(imported.source)
+                    if not isinstance(resolution, ResolvedLocal):
+                        continue
+                    for original, binding in imported.names:
+                        if binding == name:
+                            return target_for(resolution.module, original)
+                    if imported.default == name:
+                        return target_for(resolution.module, "default")
+                    for namespace in imported.namespaces:
+                        if name.startswith(namespace + "."):
+                            return target_for(resolution.module, name[len(namespace) + 1:])
+                return None
+
+            heritage = [(interface, "implements") for interface in entity.interfaces or []]
             if entity.superclass:
-                target = unique_fqn_by_name.get(entity.superclass)
-                if target:
-                    edges.append(Edge(source=fqn, target=target, relation="extends"))
-            for interface in entity.interfaces or []:
-                target = unique_fqn_by_name.get(interface)
-                if target:
-                    edges.append(Edge(source=fqn, target=target, relation="implements"))
+                heritage.append((entity.superclass, "extends"))
+            for name, relation in heritage:
+                target = heritage_target(name)
+                if target and target != fqn:
+                    edges.append(Edge(source=fqn, target=target, relation=relation))
 
         seen: set[tuple[str, str, str]] = set()
         unique_edges: list[Edge] = []

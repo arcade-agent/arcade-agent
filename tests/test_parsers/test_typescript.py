@@ -301,3 +301,290 @@ def test_parse_cache_invalidates_when_tsconfig_changes_resolution(tmp_path):
     edges = set(second.to_edge_tuples())
     assert ("app.App", "packages.c.src.Target", "import") in edges
     assert ("app.App", "packages.a.src.Target", "import") not in edges
+
+
+def test_asset_imports_do_not_qualify_source_resolution(tmp_path):
+    app = tmp_path / "app.ts"
+    app.write_text(
+        'import "./styles.css"; import data from "./data.json";\n'
+        'import logo from "./logo.svg?url"; import "@assets/theme.scss";\n'
+        "export class App { render() { return [data, logo]; } }\n"
+    )
+    graph = TypeScriptParser().parse([app], tmp_path)
+    summary = _resolution_summary(graph)
+    assert summary["import_specifiers"] == 0
+    assert summary["unresolved_local"] == 0
+    assert summary["metrics_qualified"] is False
+    assert "app.App" in graph.entities
+
+
+def test_resolved_type_alias_and_top_level_imports_are_information_only(tmp_path):
+    (tmp_path / "types.ts").write_text("export type Config = { value: number };\n")
+    (tmp_path / "factory.ts").write_text("export function make() {}\n")
+    (tmp_path / "use.ts").write_text(
+        'import type { Config } from "./types"; import { make } from "./factory";\n'
+        "make(); export class App { value!: Config; }\n"
+    )
+    graph = TypeScriptParser().parse(sorted(tmp_path.glob("*.ts")), tmp_path)
+    summary = _resolution_summary(graph)
+    assert summary["resolved_local"] == 2
+    assert summary["unlinked_local"] == 2
+    assert summary["metrics_qualified"] is False
+
+
+def test_type_alias_import_never_links_to_an_unrelated_unique_class(tmp_path):
+    (tmp_path / "types.ts").write_text("export type Config = { value: number };\n")
+    (tmp_path / "unrelated.ts").write_text("export class Config {}\n")
+    (tmp_path / "use.ts").write_text(
+        'import type { Config } from "./types"; export class App { value!: Config; }\n'
+    )
+    graph = TypeScriptParser().parse(sorted(tmp_path.glob("*.ts")), tmp_path)
+    assert ("use.App", "unrelated.Config", "import") not in set(graph.to_edge_tuples())
+    assert _resolution_summary(graph)["unlinked_local"] == 1
+
+
+@pytest.mark.parametrize("barrel", [
+    'export { Model as PublicModel } from "./model";',
+    'export * from "./named";',
+])
+def test_reexport_barrels_link_the_declared_module_without_name_fallback(tmp_path, barrel):
+    (tmp_path / "model.ts").write_text("export class Model {}\n")
+    (tmp_path / "other.ts").write_text("export class Model {}\n")
+    (tmp_path / "named.ts").write_text('export { Model as PublicModel } from "./model";\n')
+    (tmp_path / "index.ts").write_text(barrel)
+    (tmp_path / "use.ts").write_text(
+        'import { PublicModel } from "./index"; export class App { value!: PublicModel; }\n'
+    )
+    graph = TypeScriptParser().parse(sorted(tmp_path.glob("*.ts")), tmp_path)
+    edges = set(graph.to_edge_tuples())
+    assert ("use.App", "model.Model", "import") in edges
+    assert ("use.App", "other.Model", "import") not in edges
+
+
+def test_circular_reexports_terminate_and_keep_a_valid_sibling(tmp_path):
+    (tmp_path / "a.ts").write_text('export * from "./b";\n')
+    (tmp_path / "b.ts").write_text('export * from "./a"; export * from "./model";\n')
+    (tmp_path / "model.ts").write_text("export class Model {}\n")
+    (tmp_path / "use.ts").write_text(
+        'import { Model } from "./a"; export class App { value!: Model; }\n'
+    )
+    graph = TypeScriptParser().parse(sorted(tmp_path.glob("*.ts")), tmp_path)
+    assert ("use.App", "model.Model", "import") in set(graph.to_edge_tuples())
+
+
+def test_local_export_alias_and_default_reexport_link_entities(tmp_path):
+    (tmp_path / "model.ts").write_text(
+        "class Model {}\nexport { Model as PublicModel }; export default Model;\n"
+    )
+    (tmp_path / "index.ts").write_text('export { default } from "./model";\n')
+    (tmp_path / "use.ts").write_text(
+        'import Model from "./index"; import { PublicModel } from "./model";\n'
+        "export class App { first!: Model; second!: PublicModel; }\n"
+    )
+    graph = TypeScriptParser().parse(sorted(tmp_path.glob("*.ts")), tmp_path)
+    assert ("use.App", "model.Model", "import") in set(graph.to_edge_tuples())
+
+
+def test_imported_heritage_uses_its_module_when_names_are_duplicated(tmp_path):
+    (tmp_path / "model.ts").write_text("export class Model {}\n")
+    (tmp_path / "other.ts").write_text("export class Model {}\n")
+    (tmp_path / "use.ts").write_text(
+        'import { Model } from "./model"; export class App extends Model {}\n'
+    )
+    graph = TypeScriptParser().parse(sorted(tmp_path.glob("*.ts")), tmp_path)
+    edges = set(graph.to_edge_tuples())
+    assert ("use.App", "model.Model", "extends") in edges
+    assert ("use.App", "other.Model", "extends") not in edges
+
+
+def test_ambiguous_star_exports_do_not_choose_an_arbitrary_class(tmp_path):
+    for name in ("a", "b"):
+        (tmp_path / f"{name}.ts").write_text("export class Model {}\n")
+    (tmp_path / "index.ts").write_text('export * from "./a"; export * from "./b";\n')
+    (tmp_path / "use.ts").write_text(
+        'import { Model } from "./index"; export class App { value!: Model; }\n'
+    )
+    graph = TypeScriptParser().parse(sorted(tmp_path.glob("*.ts")), tmp_path)
+    assert not any(edge.source == "use.App" for edge in graph.edges)
+    assert "use.App" in graph.entities
+
+
+def test_star_export_does_not_reexport_a_default_or_private_class(tmp_path):
+    (tmp_path / "model.ts").write_text("class Private {}\nexport default class Model {}\n")
+    (tmp_path / "index.ts").write_text('export * from "./model";\n')
+    (tmp_path / "use.ts").write_text(
+        'import Model from "./index"; import { Private } from "./model";\n'
+        "export class App { first!: Model; second!: Private; }\n"
+    )
+    graph = TypeScriptParser().parse(sorted(tmp_path.glob("*.ts")), tmp_path)
+    assert not any(edge.source == "use.App" for edge in graph.edges)
+    assert "use.App" in graph.entities
+
+
+@pytest.mark.parametrize("kind", ["class", "interface"])
+def test_default_declaration_is_not_implicitly_a_named_export(tmp_path, kind):
+    (tmp_path / "model.ts").write_text(f"export default {kind} Model {{}}\n")
+    (tmp_path / "use.ts").write_text(
+        'import { Model } from "./model"; export class App { value!: Model; }\n'
+    )
+    graph = TypeScriptParser().parse(sorted(tmp_path.glob("*.ts")), tmp_path)
+    assert not any(edge.source == "use.App" for edge in graph.edges)
+
+
+def test_deep_reexports_are_iterative_and_preserve_a_valid_sibling(tmp_path):
+    for index in range(1_200):
+        (tmp_path / f"barrel{index}.ts").write_text(
+            f'export * from "./barrel{index + 1}";\n'
+        )
+    (tmp_path / "barrel1200.ts").write_text("export class Model {}\n")
+    (tmp_path / "use.ts").write_text(
+        'import { Model } from "./barrel0"; export class App { value!: Model; }\n'
+    )
+    (tmp_path / "sibling.ts").write_text("export class Survives {}\n")
+    graph = TypeScriptParser().parse(sorted(tmp_path.glob("*.ts")), tmp_path)
+    assert ("use.App", "barrel1200.Model", "import") in set(graph.to_edge_tuples())
+    assert "sibling.Survives" in graph.entities
+    assert all(edge.source in graph.entities and edge.target in graph.entities
+               for edge in graph.edges)
+
+
+@pytest.mark.parametrize("extension", [".mts", ".cts"])
+def test_typescript_module_extensions_are_sources_instead_of_assets(tmp_path, extension):
+    model = tmp_path / f"model{extension}"
+    model.write_text("export class Model {}\n")
+    app = tmp_path / "use.ts"
+    app.write_text(
+        f'import {{ Model }} from "./model{extension}"; export class App {{ value!: Model; }}\n'
+    )
+    graph = TypeScriptParser().parse([model, app], tmp_path)
+    assert ("use.App", "model.Model", "import") in set(graph.to_edge_tuples())
+    assert _resolution_summary(graph)["resolved_local"] == 1
+
+
+@pytest.mark.parametrize("depth", [2, 1_100])
+def test_deep_config_extends_preserves_source_and_a_valid_sibling(tmp_path, depth):
+    (tmp_path / "tsconfig.json").write_text('{"extends":"./config0"}')
+    for index in range(depth):
+        (tmp_path / f"config{index}.json").write_text(
+            f'{{"extends":"./config{index + 1}"}}'
+        )
+    (tmp_path / f"config{depth}.json").write_text(
+        '{"compilerOptions":{"paths":{"@model":["model.ts"]}}}'
+    )
+    (tmp_path / "model.ts").write_text("export class Model {}\n")
+    (tmp_path / "sibling.ts").write_text("export class Survives {}\n")
+    (tmp_path / "use.ts").write_text(
+        'import { Model } from "@model"; export class App { value!: Model; }\n'
+    )
+    graph = TypeScriptParser().parse(sorted(tmp_path.glob("*.ts")), tmp_path)
+    assert ("use.App", "model.Model", "import") in set(graph.to_edge_tuples())
+    assert "sibling.Survives" in graph.entities
+    assert _resolution_summary(graph)["configuration_errors"] == []
+
+
+@pytest.mark.parametrize("statement,expected", [
+    ('export * from "../model";', False),
+    ('export { default } from "../model";', True),
+])
+def test_nested_barrel_only_links_declared_default_export(tmp_path, statement, expected):
+    (tmp_path / "barrel").mkdir()
+    (tmp_path / "barrel/index.ts").write_text(statement)
+    (tmp_path / "model.ts").write_text("export default class Model {}\n")
+    (tmp_path / "use.ts").write_text(
+        'import Model from "./barrel"; export class App { value!: Model; }\n'
+    )
+    graph = TypeScriptParser().parse(sorted(tmp_path.rglob("*.ts")), tmp_path)
+    edges = set(graph.to_edge_tuples())
+    assert (("use.App", "model.Model", "import") in edges) is expected
+    assert ("use.App", "barrel", "import") not in edges
+
+
+def test_file_and_index_exports_keep_distinct_resolution_identities(tmp_path):
+    (tmp_path / "foo").mkdir()
+    (tmp_path / "foo.ts").write_text("export class Model {}\n")
+    (tmp_path / "foo/index.ts").write_text("export class Other {}\n")
+    (tmp_path / "explicit.ts").write_text(
+        'import { Model, Other } from "./foo/index";\n'
+        "export class App { first!: Model; second!: Other; }\n"
+    )
+    (tmp_path / "implicit.ts").write_text(
+        'import { Model, Other } from "./foo";\n'
+        "export class App { first!: Model; second!: Other; }\n"
+    )
+    graph = TypeScriptParser().parse(sorted(tmp_path.rglob("*.ts")), tmp_path)
+    edges = set(graph.to_edge_tuples())
+    assert ("explicit.App", "foo.Other", "import") in edges
+    assert ("explicit.App", "foo.Model", "import") not in edges
+    assert ("implicit.App", "foo.Model", "import") in edges
+    assert ("implicit.App", "foo.Other", "import") not in edges
+
+
+@pytest.mark.parametrize("cycle", [False, True])
+def test_symlink_import_does_not_erase_a_healthy_sibling(tmp_path, cycle):
+    model = tmp_path / "model.ts"
+    model.write_text("export class Model {}\n")
+    linked = tmp_path / "linked.ts"
+    linked.symlink_to(linked if cycle else model)
+    use = tmp_path / "use.ts"
+    use.write_text('import { Model } from "./linked"; export class App { value!: Model; }\n')
+    sibling = tmp_path / "sibling.ts"
+    sibling.write_text("export class Survives {}\n")
+    graph = TypeScriptParser().parse([model, use, sibling], tmp_path)
+    assert "sibling.Survives" in graph.entities
+    assert (("use.App", "model.Model", "import") in set(graph.to_edge_tuples())) is not cycle
+    assert _resolution_summary(graph)["metrics_qualified"] is cycle
+
+
+def test_duplicate_file_and_index_symbol_never_links_to_the_wrong_source(tmp_path):
+    (tmp_path / "foo").mkdir()
+    (tmp_path / "foo.ts").write_text("export class Model {}\n")
+    (tmp_path / "foo/index.ts").write_text("export class Model {}\n")
+    (tmp_path / "use.ts").write_text(
+        'import { Model } from "./foo"; export class App { value!: Model; }\n'
+    )
+    graph = TypeScriptParser().parse(sorted(tmp_path.rglob("*.ts")), tmp_path)
+    assert graph.entities["foo.Model"].file_path == "foo/index.ts"
+    assert not any(edge.source == "use.App" for edge in graph.edges)
+    assert graph.metadata["typescript_parser"]["duplicate_entity_fqns"] == 1
+
+
+def test_symlink_loop_in_base_url_is_a_visible_config_error(tmp_path):
+    loop = tmp_path / "loop"
+    loop.symlink_to(loop, target_is_directory=True)
+    (tmp_path / "tsconfig.json").write_text(
+        '{"compilerOptions":{"baseUrl":"loop","paths":{"@model":["model.ts"]}}}'
+    )
+    (tmp_path / "model.ts").write_text("export class Model {}\n")
+    (tmp_path / "use.ts").write_text(
+        'import { Model } from "@model"; export class App { value!: Model; }\n'
+    )
+    graph = TypeScriptParser().parse(sorted(tmp_path.glob("*.ts")), tmp_path)
+    assert "model.Model" in graph.entities
+    assert "use.App" in graph.entities
+    assert not graph.edges
+    assert _resolution_summary(graph)["configuration_errors"]
+    assert _resolution_summary(graph)["metrics_qualified"] is True
+
+
+@pytest.mark.parametrize("specifier,target", [
+    ("./foo", "foo.Model"), ("./foo.js", "foo.Model"), ("./foo.tsx", "foo.Other"),
+])
+def test_ts_and_tsx_resolution_keeps_the_selected_file_identity(tmp_path, specifier, target):
+    (tmp_path / "foo.ts").write_text("export class Model {}\n")
+    (tmp_path / "foo.tsx").write_text("export class Other {}\n")
+    (tmp_path / "use.ts").write_text(
+        f'import {{ Model, Other }} from "{specifier}";\n'
+        "export class App { first!: Model; second!: Other; }\n"
+    )
+    graph = TypeScriptParser().parse(sorted(tmp_path.glob("*.ts*")), tmp_path)
+    assert {edge.target for edge in graph.edges if edge.source == "use.App"} == {target}
+
+
+def test_dotted_extensionless_module_name_is_not_filtered_as_an_asset(tmp_path):
+    (tmp_path / "user.model.ts").write_text("export class Model {}\n")
+    (tmp_path / "use.ts").write_text(
+        'import { Model } from "./user.model"; export class App { value!: Model; }\n'
+    )
+    graph = TypeScriptParser().parse(sorted(tmp_path.glob("*.ts")), tmp_path)
+    assert ("use.App", "user.model.Model", "import") in set(graph.to_edge_tuples())
+    assert _resolution_summary(graph)["resolved_local"] == 1

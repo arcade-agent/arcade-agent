@@ -20,13 +20,10 @@ or changes to AST traversal and linking.
 5. Add adversarial fixtures deeper than `sys.getrecursionlimit()` for every distinct
    traversal shape. Each fixture must be parsed beside a valid sibling file.
 6. Test cache invalidation for manifests or configuration that changes graph identity.
-7. For configurable module resolution, model resolved-local, external, and
-   unresolved-local as distinct outcomes; publish bounded coverage diagnostics and qualify
-   graph-derived scores when local resolution or symbol linking is incomplete.
-8. Time the parser on one large generated single-package file before declaring it done.
+7. Time the parser on one large generated single-package file before declaring it done.
    A de-duplicated ordered collection guarded by `if x not in list` is quadratic and only
    shows up at scale (see `docs/BUG_CATALOG.md` #3).
-9. Run, in order:
+8. Run, in order:
    - focused parser and cache tests;
    - Ruff and the full test suite;
    - a large real repository for the target language, reporting wall-clock time;
@@ -44,8 +41,6 @@ or changes to AST traversal and linking.
   `exclude_tests` that change the graph for an identical file list.
 - Test exclusion covers every syntactic shape the language offers, imports included.
 - Correctness and explicit failure behavior take precedence over cosmetic metric gains.
-- Bare imports that match local manifests or resolver configuration are never silently
-  collapsed into the external-dependency bucket.
 
 ## Evidence
 
