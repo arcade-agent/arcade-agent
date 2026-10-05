@@ -838,7 +838,7 @@ def build_comment(
 
     lines.append("## 🤖 Architecture Analysis Summary\n")
     lines.append(
-        "_Powered by [arcade-agent](https://github.com/lemduc/arcade-agent) — "
+        "_Powered by [arcade-agent](https://github.com/arcade-agent/arcade-agent) — "
         "automatic architectural self-analysis_\n"
     )
     lines.append("---\n")
