@@ -1,5 +1,6 @@
 """Tests for the TypeScript / JavaScript parser."""
 
+import json
 import os
 
 import pytest
@@ -548,19 +549,26 @@ def test_duplicate_file_and_index_symbol_never_links_to_the_wrong_source(tmp_pat
     assert graph.metadata["typescript_parser"]["duplicate_entity_fqns"] == 1
 
 
-def test_symlink_loop_in_base_url_is_a_visible_config_error(tmp_path):
+@pytest.mark.parametrize("base_url", ["loop", "loop/missing", "missing/../loop"])
+@pytest.mark.parametrize("mutual", [False, True])
+def test_symlink_loop_in_base_url_is_a_visible_config_error(tmp_path, base_url, mutual):
     loop = tmp_path / "loop"
-    loop.symlink_to(loop, target_is_directory=True)
-    (tmp_path / "tsconfig.json").write_text(
-        '{"compilerOptions":{"baseUrl":"loop","paths":{"@model":["model.ts"]}}}'
-    )
+    other = tmp_path / "other"
+    loop.symlink_to(other if mutual else loop, target_is_directory=True)
+    if mutual:
+        other.symlink_to(loop, target_is_directory=True)
+    (tmp_path / "tsconfig.json").write_text(json.dumps({
+        "compilerOptions": {"baseUrl": base_url, "paths": {"@model": ["model.ts"]}},
+    }))
     (tmp_path / "model.ts").write_text("export class Model {}\n")
     (tmp_path / "use.ts").write_text(
         'import { Model } from "@model"; export class App { value!: Model; }\n'
     )
+    (tmp_path / "sibling.ts").write_text("export class Survives {}\n")
     graph = TypeScriptParser().parse(sorted(tmp_path.glob("*.ts")), tmp_path)
     assert "model.Model" in graph.entities
     assert "use.App" in graph.entities
+    assert "sibling.Survives" in graph.entities
     assert not graph.edges
     assert _resolution_summary(graph)["configuration_errors"]
     assert _resolution_summary(graph)["metrics_qualified"] is True

@@ -88,6 +88,33 @@ def test_relative_resolution_and_in_root_symlink(tmp_path, specifier):
     )
 
 
+def test_missing_js_symlink_target_still_resolves_to_typescript_source(tmp_path):
+    resolver = _resolver(tmp_path, ["use.ts", "model.ts"])
+    (tmp_path / "linked.js").symlink_to(tmp_path / "model.js")
+    assert resolver.resolve("./linked.js", tmp_path / "use.ts") == ResolvedLocal(
+        "model", "relative"
+    )
+    assert not resolver.configuration_errors
+
+
+@pytest.mark.parametrize("entry", ["extends", "references", "files"])
+def test_symlink_loop_in_config_paths_reports_error_and_preserves_local_source(tmp_path, entry):
+    resolver = _resolver(tmp_path, ["use.ts", "model.ts"])
+    loop = tmp_path / "loop"
+    loop.symlink_to(loop, target_is_directory=True)
+    data = {
+        "extends": {"extends": "./loop/config.json"},
+        "references": {"references": [{"path": "./loop/config.json"}]},
+        "files": {"files": ["loop/model.ts", "use.ts"]},
+    }[entry]
+    (tmp_path / "tsconfig.json").write_text(json.dumps(data))
+    resolver.resolve("react", tmp_path / "use.ts")
+    assert resolver.configuration_errors
+    assert resolver.resolve("./model", tmp_path / "use.ts") == ResolvedLocal(
+        "model", "relative"
+    )
+
+
 def test_extends_rejects_outside_root_before_reading_it(tmp_path, monkeypatch):
     resolver = _resolver(tmp_path, ["use.ts", "model.ts"])
     outside = tmp_path.parent / f"{tmp_path.name}-outside.json"

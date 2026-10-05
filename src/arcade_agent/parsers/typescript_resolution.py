@@ -227,6 +227,18 @@ def _as_string_list(value: object) -> tuple[str, ...]:
     return ()
 
 
+def _resolve_path(path: Path) -> Path:
+    """Reject symlink loops while allowing missing module/config suffixes."""
+    resolved = path.resolve()
+    try:
+        # Non-strict resolution suppresses symlink-loop errors in Python 3.13.
+        # A single stat exposes those errors while allowing absent lookup suffixes.
+        resolved.stat()
+    except FileNotFoundError:
+        pass
+    return resolved
+
+
 def _export_targets(value: object) -> tuple[str, ...]:
     """Flatten package export conditions in deterministic preference order."""
     if isinstance(value, str):
@@ -315,7 +327,7 @@ class TypeScriptModuleResolver:
         if not target.is_absolute():
             target = config_path.parent / target
         try:
-            target = target.resolve()
+            target = _resolve_path(target)
         except (OSError, RuntimeError) as error:
             self._record_configuration_error(config_path, error)
             return None
@@ -327,7 +339,7 @@ class TypeScriptModuleResolver:
         elif target.suffix not in (".json", ".jsonc"):
             target = target.with_suffix(".json")
         try:
-            target = target.resolve()
+            target = _resolve_path(target)
         except (OSError, RuntimeError) as error:
             self._record_configuration_error(config_path, error)
             return None
@@ -341,7 +353,7 @@ class TypeScriptModuleResolver:
         if cached is not None:
             return cached
         try:
-            path = path.resolve()
+            path = _resolve_path(path)
         except (OSError, RuntimeError) as error:
             self._record_configuration_error(path, error)
             return _CompilerConfig(path=path)
@@ -419,7 +431,7 @@ class TypeScriptModuleResolver:
             if "${configDir}" in raw_base_url:
                 self._record_configuration_error(path, ValueError("unsupported ${configDir}"))
             try:
-                base_url = (path.parent / raw_base_url).resolve()
+                base_url = _resolve_path(path.parent / raw_base_url)
             except (OSError, RuntimeError) as error:
                 self._record_configuration_error(path, error)
                 return _CompilerConfig(path=path)
@@ -450,7 +462,7 @@ class TypeScriptModuleResolver:
             resolved_files = []
             for value in _as_string_list(data["files"]):
                 try:
-                    resolved_files.append((path.parent / value).resolve())
+                    resolved_files.append(_resolve_path(path.parent / value))
                 except (OSError, RuntimeError) as error:
                     self._record_configuration_error(path, error)
             files = tuple(resolved_files)
@@ -615,7 +627,7 @@ class TypeScriptModuleResolver:
             return self._path_cache[target]
         original = target
         try:
-            target = target.resolve()
+            target = _resolve_path(target)
             relative = target.relative_to(self.root)
         except (OSError, RuntimeError, ValueError):
             self._path_cache[original] = None
