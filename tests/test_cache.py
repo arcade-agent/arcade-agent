@@ -1,7 +1,9 @@
 """Tests for parse result caching."""
 
 import hashlib
+import json
 import os
+import sys
 from unittest.mock import Mock
 
 import pytest
@@ -9,6 +11,7 @@ import pytest
 from arcade_agent.algorithms.architecture import Architecture, Component
 from arcade_agent.algorithms.cycles import detect_dependency_cycles
 from arcade_agent.cache import (
+    _typescript_configuration_files,
     cache_key,
     get_cached_graph,
     invalidate_cache,
@@ -16,6 +19,7 @@ from arcade_agent.cache import (
 )
 from arcade_agent.parsers.graph import DependencyGraph, Edge, Entity
 from arcade_agent.parsers.java import JavaParser
+from arcade_agent.parsers.typescript import TypeScriptParser
 from arcade_agent.source.parse import parse
 
 
@@ -105,6 +109,204 @@ def test_cache_key_tracks_cargo_manifests_for_composite_language_keys(tmp_projec
     k2 = cache_key(str(tmp_project), "rust|excl:default", None)
 
     assert k1 != k2
+
+
+@pytest.mark.parametrize(
+    ("configuration_name", "language"),
+    [
+        ("tsconfig.base.json", "typescript"),
+        ("package.json", "typescript|excl:default"),
+        ("jsconfig.json", "typescript"),
+    ],
+)
+def test_cache_key_tracks_typescript_resolution_configuration(
+    tmp_project, configuration_name, language
+):
+    source = tmp_project / "src" / "app.ts"
+    source.write_text("export class App {}\n")
+    configuration = tmp_project / configuration_name
+    configuration.write_text('{"compilerOptions":{"baseUrl":"src"}}')
+    files = [str(source)]
+    first = cache_key(str(tmp_project), language, files)
+
+    configuration.write_text('{"compilerOptions":{"baseUrl":"lib"}}')
+    newer = configuration.stat().st_mtime + 2
+    os.utime(configuration, (newer, newer))
+    second = cache_key(str(tmp_project), language, files)
+
+    assert first != second
+
+
+@pytest.mark.parametrize("extension", [".mts", ".cts", ".mjs", ".cjs"])
+def test_cache_key_tracks_all_javascript_parser_extensions(tmp_project, extension):
+    source = tmp_project / "src" / f"app{extension}"
+    source.write_text("export class Before {}\n")
+    first = cache_key(str(tmp_project), "typescript", None)
+    source.write_text("export class After {}\n")
+    newer = source.stat().st_mtime + 2
+    os.utime(source, (newer, newer))
+    second = cache_key(str(tmp_project), "typescript", None)
+
+    assert first != second
+
+
+@pytest.fixture
+def typescript_project(tmp_path):
+    app = tmp_path / "app.ts"
+    target = tmp_path / "target.ts"
+    app.write_text('import Target from "./target"; export class App { value!: Target; }\n')
+    target.write_text("export default class Target {}\n")
+    return tmp_path
+
+
+@pytest.mark.parametrize("explicit_files", [False, True])
+def test_parse_invalidates_previous_typescript_cache(typescript_project, explicit_files):
+    root = typescript_project
+    files = sorted(root.glob("*.ts"))
+    language = "typescript" if explicit_files else "typescript|default=True;extra=()"
+    legacy_graph = DependencyGraph(entities={
+        "app.App": Entity("app.App", "App", "", "app.ts", "class", "typescript"),
+        "target.Target": Entity("target.Target", "Target", "", "target.ts", "class", "typescript"),
+    })
+    for version in (None, "4"):
+        hasher = hashlib.sha256()
+        if version is not None:
+            hasher.update(f"graph-schema:{version}".encode())
+        hasher.update(str(root.resolve()).encode())
+        hasher.update(language.encode())
+        hasher.update(b"tests:excluded")
+        for path in files:
+            hasher.update(str(path).encode())
+            hasher.update(str(path.stat().st_mtime_ns).encode())
+        put_cached_graph(str(root), hasher.hexdigest(), legacy_graph)
+
+    graph = parse(
+        str(root), language="typescript",
+        files=[str(path) for path in files] if explicit_files else None,
+    )
+
+    assert ("app.App", "target.Target", "import") in graph.to_edge_tuples()
+
+
+def test_parse_reuses_current_typescript_cache(typescript_project, monkeypatch):
+    cold = parse(str(typescript_project), language="typescript")
+    parser = Mock(side_effect=AssertionError("Warm cache must skip parsing"))
+    monkeypatch.setattr(TypeScriptParser, "parse", parser)
+
+    warm = parse(str(typescript_project), language="typescript")
+
+    assert warm == cold
+    assert ("app.App", "target.Target", "import") in warm.to_edge_tuples()
+    parser.assert_not_called()
+
+
+@pytest.mark.parametrize("relation", ["extends", "references"])
+@pytest.mark.parametrize("suffix", [".json", ".jsonc"])
+def test_parse_cache_tracks_transitive_typescript_configuration(tmp_path, relation, suffix):
+    for directory in ("a", "b"):
+        (tmp_path / directory).mkdir()
+        (tmp_path / directory / "target.ts").write_text("export class Target {}\n")
+    (tmp_path / "app.ts").write_text(
+        'import { Target } from "@target"; export class App { value!: Target; }\n'
+    )
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    leaf = config_dir / f"base{suffix}"
+    leaf.write_text(
+        '{/* JSONC */"compilerOptions":{"baseUrl":"../a",'
+        '"paths":{"@target":["target.ts"]},},}\n'
+    )
+    (tmp_path / "project.json").write_text(json.dumps({"extends": f"./config/base{suffix}"}))
+    configuration = {"extends": ["./project"]} if relation == "extends" else {
+        "files": [], "references": [{"path": "./project"}],
+    }
+    (tmp_path / "tsconfig.json").write_text(json.dumps(configuration))
+    files = [str(path) for path in sorted(tmp_path.rglob("*.ts"))]
+    first = parse(str(tmp_path), language="typescript", files=files)
+    assert ("app.App", "a.target.Target", "import") in first.to_edge_tuples()
+
+    leaf.write_text(leaf.read_text().replace('"../a"', '"../b"'))
+    newer = leaf.stat().st_mtime + 2
+    os.utime(leaf, (newer, newer))
+    second = parse(str(tmp_path), language="typescript", files=files)
+
+    assert ("app.App", "b.target.Target", "import") in second.to_edge_tuples()
+    assert ("app.App", "a.target.Target", "import") not in second.to_edge_tuples()
+
+
+def test_typescript_configuration_scan_is_bounded_and_contained(tmp_path, monkeypatch):
+    from arcade_agent.parsers import typescript_resolution
+
+    outside = tmp_path.parent / f"{tmp_path.name}-outside.json"
+    outside.write_text("{}")
+    (tmp_path / "linked.json").symlink_to(outside)
+    (tmp_path / "tsconfig.external.json").symlink_to(outside)
+    (tmp_path / "tsconfig.json").write_text(json.dumps({
+        "extends": ["./first", "./missing", str(outside), "./linked"],
+    }))
+    (tmp_path / "first.json").write_text(
+        '{"references":[{"path":"./second"}],"extends":"./tsconfig"}'
+    )
+    (tmp_path / "second.json").write_text('{"extends":"./first"}')
+    (tmp_path / "unrelated.json").write_text("{}")
+    original = typescript_resolution._read_json_object
+    reads = []
+
+    def record(path):
+        reads.append(path)
+        return original(path)
+
+    monkeypatch.setattr(typescript_resolution, "_read_json_object", record)
+    files = _typescript_configuration_files(tmp_path)
+
+    assert files == {
+        str(tmp_path / name)
+        for name in ("tsconfig.json", "first.json", "second.json", "missing.json")
+    }
+    assert len(reads) == len(set(reads))
+    assert outside not in reads
+    assert tmp_path / "unrelated.json" not in reads
+
+
+def test_typescript_configuration_scan_handles_deep_references(tmp_path):
+    depth = sys.getrecursionlimit() + 10
+    (tmp_path / "tsconfig.json").write_text('{"references":[{"path":"./0"}]}')
+    for index in range(depth):
+        target = str(index + 1) if index + 1 < depth else "tsconfig"
+        (tmp_path / f"{index}.json").write_text(json.dumps({
+            "references": [{"path": f"./{target}"}],
+        }))
+
+    files = _typescript_configuration_files(tmp_path)
+
+    assert len(files) == depth + 1
+
+
+def test_cache_key_ignores_unrelated_json(typescript_project):
+    root = typescript_project
+    unrelated = root / "unrelated.json"
+    unrelated.write_text('{"before": true}')
+    first = cache_key(str(root), "typescript", None)
+    unrelated.write_text('{"after": true}')
+    newer = unrelated.stat().st_mtime + 2
+    os.utime(unrelated, (newer, newer))
+
+    assert cache_key(str(root), "typescript", None) == first
+
+
+def test_cache_key_tracks_declared_missing_configuration(typescript_project):
+    root = typescript_project
+    (root / "tsconfig.json").write_text('{"extends":"./custom"}')
+    first = cache_key(str(root), "typescript", None)
+
+    configuration = root / "custom.json"
+    configuration.write_text('{"compilerOptions":{"baseUrl":"src"}}')
+    second = cache_key(str(root), "typescript", None)
+    configuration.unlink()
+    third = cache_key(str(root), "typescript", None)
+
+    assert first != second
+    assert second != third
 
 
 def test_cache_key_changes_with_exclude_tests(tmp_project):
