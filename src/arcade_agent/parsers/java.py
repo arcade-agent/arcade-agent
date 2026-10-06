@@ -1,9 +1,10 @@
 """Java parser using tree-sitter."""
 
 from pathlib import Path
+from typing import Any
 
 import tree_sitter_java as tsjava
-from tree_sitter import Language, Parser
+from tree_sitter import Language, Node, Parser
 
 from arcade_agent.parsers.base import LanguageParser, register_parser
 from arcade_agent.parsers.graph import DependencyGraph, Edge, Entity
@@ -11,14 +12,14 @@ from arcade_agent.parsers.graph import DependencyGraph, Edge, Entity
 JAVA_LANGUAGE = Language(tsjava.language())
 
 
-def _get_text(node) -> str:
+def _get_text(node: Node | None) -> str:
     """Get the text content of a node."""
-    if node is None:
+    if node is None or node.text is None:
         return ""
     return node.text.decode()
 
 
-def _extract_package(root_node) -> str:
+def _extract_package(root_node: Node) -> str:
     """Extract the package declaration from a Java file."""
     for child in root_node.children:
         if child.type == "package_declaration":
@@ -28,18 +29,40 @@ def _extract_package(root_node) -> str:
     return ""
 
 
-def _extract_imports(root_node) -> list[str]:
-    """Extract all import declarations."""
+def _extract_imports(root_node: Node) -> list[tuple[str, bool]]:
+    """Extract all import declarations as ``(name, is_wildcard)`` pairs."""
     imports = []
     for child in root_node.children:
         if child.type == "import_declaration":
+            wildcard = any(sub.type == "asterisk" for sub in child.children)
             for sub in child.children:
                 if sub.type == "scoped_identifier":
-                    imports.append(_get_text(sub))
+                    imports.append((_get_text(sub), wildcard))
     return imports
 
 
-def _extract_type_declarations(root_node) -> list[dict]:
+def _extract_referenced_names(node: Node) -> set[str]:
+    """Collect identifiers used in code within a node.
+
+    Comments (including Javadoc) are separate tree-sitter nodes without
+    identifier children, so ``{@link Foo}`` never counts as a reference.
+    """
+    names: set[str] = set()
+    stack = [node]
+    while stack:
+        n = stack.pop()
+        if n.type in ("identifier", "type_identifier"):
+            names.add(_get_text(n))
+        stack.extend(n.children)
+    return names
+
+
+def _used_imports(imports: list[tuple[str, bool]], refs: set[str]) -> list[str]:
+    """Keep imports referenced in code; wildcard imports can't be verified, so stay."""
+    return [name for name, wildcard in imports if wildcard or name.split(".")[-1] in refs]
+
+
+def _extract_type_declarations(root_node: Node) -> list[dict[str, Any]]:
     """Extract class, interface, and enum declarations with inheritance info."""
     decls = []
     for node in root_node.children:
@@ -50,7 +73,7 @@ def _extract_type_declarations(root_node) -> list[dict]:
     return decls
 
 
-def _parse_type_declaration(node) -> dict | None:
+def _parse_type_declaration(node: Node) -> dict[str, Any] | None:
     """Parse a single type declaration node."""
     name_node = node.child_by_field_name("name")
     if not name_node:
@@ -62,7 +85,7 @@ def _parse_type_declaration(node) -> dict | None:
         "enum_declaration": "enum",
     }
 
-    decl = {
+    decl: dict[str, Any] = {
         "name": _get_text(name_node),
         "kind": kind_map.get(node.type, "class"),
         "superclass": None,
@@ -87,7 +110,7 @@ def _parse_type_declaration(node) -> dict | None:
     return decl
 
 
-def _extract_methods(type_decl: dict, package: str) -> list[dict]:
+def _extract_methods(type_decl: dict[str, Any], package: str) -> list[dict[str, Any]]:
     """Extract methods and constructors from a type declaration."""
     methods = []
     body_types = {"class_body", "interface_body", "enum_body"}
@@ -109,6 +132,7 @@ def _extract_methods(type_decl: dict, package: str) -> list[dict]:
                 "name": _get_text(name_node),
                 "kind": "method",
                 "owner_fqn": owner_fqn,
+                "node": member,
             })
 
     return methods
@@ -194,7 +218,7 @@ class JavaParser(LanguageParser):
                     file_path=rel_path,
                     kind=decl["kind"],
                     language="java",
-                    imports=imports,
+                    imports=_used_imports(imports, _extract_referenced_names(decl["node"])),
                     superclass=decl["superclass"],
                     interfaces=decl["interfaces"],
                 )
@@ -211,7 +235,9 @@ class JavaParser(LanguageParser):
                         file_path=rel_path,
                         kind="method",
                         language="java",
-                        imports=imports,
+                        imports=_used_imports(
+                            imports, _extract_referenced_names(method_decl["node"])
+                        ),
                         properties={"owner": method_decl["owner_fqn"]},
                     )
                     packages.setdefault(package, []).append(method_fqn)
