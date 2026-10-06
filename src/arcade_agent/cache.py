@@ -1,4 +1,4 @@
-"""Parse result caching based on file modification times."""
+"""Parse result caching based on graph schema and file modification times."""
 
 import hashlib
 import json
@@ -13,6 +13,7 @@ from arcade_agent.serialization import dict_to_graph, graph_to_dict
 logger = logging.getLogger(__name__)
 
 _CACHE_DIR = ".arcade-cache"
+_GRAPH_CACHE_SCHEMA_VERSION = "4"
 
 
 def _cache_dir(project_root: Path) -> Path:
@@ -32,11 +33,11 @@ def cache_key(
     files: list[str] | None,
     exclude_tests: bool = True,
 ) -> str:
-    """Compute a cache key from source path, language, and file mtimes.
+    """Compute a cache key from graph schema, source path, language, and file mtimes.
 
     The key is a SHA-256 hash of the sorted file paths and their modification
     times, ensuring the cache is automatically invalidated when any source file
-    changes.
+    changes. Bump the graph schema version when parser behavior changes.
 
     Args:
         source_path: Root directory of the project.
@@ -51,6 +52,7 @@ def cache_key(
     """
     root = Path(source_path).resolve()
     hasher = hashlib.sha256()
+    hasher.update(f"graph-schema:{_GRAPH_CACHE_SCHEMA_VERSION}".encode())
     hasher.update(str(root).encode())
     hasher.update((language or "auto").encode())
     hasher.update(b"tests:excluded" if exclude_tests else b"tests:included")
