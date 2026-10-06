@@ -9,6 +9,8 @@ from unittest.mock import Mock
 import pytest
 
 import arcade_agent.cache as graph_cache
+from arcade_agent.algorithms.architecture import Architecture, Component
+from arcade_agent.algorithms.cycles import detect_dependency_cycles
 from arcade_agent.cache import (
     _typescript_configuration_files,
     cache_key,
@@ -17,6 +19,7 @@ from arcade_agent.cache import (
     put_cached_graph,
 )
 from arcade_agent.parsers.graph import DependencyGraph, Edge, Entity
+from arcade_agent.parsers.java import JavaParser
 from arcade_agent.parsers.typescript import TypeScriptParser
 from arcade_agent.source.parse import parse
 
@@ -345,6 +348,96 @@ def test_cache_key_changes_with_exclude_tests(tmp_project):
     k1 = cache_key(str(tmp_project), "rust", None)
     k2 = cache_key(str(tmp_project), "rust", None, exclude_tests=False)
     assert k1 != k2
+
+
+def test_cache_key_changes_with_graph_cache_schema_version(tmp_project, monkeypatch):
+    k1 = cache_key(str(tmp_project), "java", None)
+    monkeypatch.setattr("arcade_agent.cache._GRAPH_CACHE_SCHEMA_VERSION", "next")
+    k2 = cache_key(str(tmp_project), "java", None)
+    assert k1 != k2
+
+
+@pytest.fixture
+def java_project_with_unused_import(tmp_path):
+    pool = tmp_path / "p" / "a" / "Pool.java"
+    doc = tmp_path / "p" / "b" / "Doc.java"
+    pool.parent.mkdir(parents=True)
+    doc.parent.mkdir(parents=True)
+    pool.write_text(
+        "package p.a;\nimport p.b.Doc;\n"
+        "/** See {@link Doc}. */\npublic class Pool {}\n"
+    )
+    doc.write_text(
+        "package p.b;\nimport p.a.Pool;\npublic class Doc { Pool pool; }\n"
+    )
+    return tmp_path
+
+
+@pytest.mark.parametrize("language", ["java", None, "multi"])
+@pytest.mark.parametrize("explicit_files", [False, True])
+def test_parse_invalidates_legacy_java_import_cycle(
+    java_project_with_unused_import, language, explicit_files,
+):
+    root = java_project_with_unused_import
+    files = sorted(root.rglob("*.java"))
+    mtimes = [path.stat().st_mtime_ns for path in files]
+
+    # Fingerprint used before parser-version invalidation; sources stay unchanged.
+    hasher = hashlib.sha256()
+    hasher.update(str(root.resolve()).encode())
+    cache_language = language or "auto"
+    if not explicit_files:
+        cache_language = f"{cache_language}|default=True;extra=()"
+    hasher.update(cache_language.encode())
+    hasher.update(b"tests:excluded")
+    for path in files:
+        hasher.update(str(path).encode())
+        hasher.update(str(path.stat().st_mtime_ns).encode())
+    legacy_key = hasher.hexdigest()
+    legacy_graph = DependencyGraph(
+        entities={
+            "p.a.Pool": Entity(
+                "p.a.Pool", "Pool", "p.a", str(files[0]), "class", "java", ["p.b.Doc"],
+            ),
+            "p.b.Doc": Entity(
+                "p.b.Doc", "Doc", "p.b", str(files[1]), "class", "java", ["p.a.Pool"],
+            ),
+        },
+        edges=[Edge("p.a.Pool", "p.b.Doc", "import"), Edge("p.b.Doc", "p.a.Pool", "import")],
+        packages={"p.a": ["p.a.Pool"], "p.b": ["p.b.Doc"]},
+    )
+    architecture = Architecture(components=[
+        Component(name="A", responsibility="", entities=["p.a.Pool"]),
+        Component(name="B", responsibility="", entities=["p.b.Doc"]),
+    ])
+    assert detect_dependency_cycles(architecture, legacy_graph) == [["A", "B"]]
+    put_cached_graph(str(root), legacy_key, legacy_graph)
+    assert get_cached_graph(str(root), legacy_key) is not None
+
+    graph = parse(
+        str(root), language=language,
+        files=[str(path) for path in files] if explicit_files else None,
+    )
+
+    assert set(graph.entities) == {"p.a.Pool", "p.b.Doc"}
+    assert ("p.b.Doc", "p.a.Pool", "import") in graph.to_edge_tuples()
+    assert ("p.a.Pool", "p.b.Doc", "import") not in graph.to_edge_tuples()
+    assert detect_dependency_cycles(architecture, graph) == []
+    assert mtimes == [path.stat().st_mtime_ns for path in files]
+
+
+def test_parse_reuses_current_java_cache(java_project_with_unused_import, monkeypatch):
+    root = java_project_with_unused_import
+    cold = parse(str(root), language="java")
+    parser = Mock(side_effect=AssertionError("Warm cache must skip parsing"))
+    monkeypatch.setattr(JavaParser, "parse", parser)
+
+    warm = parse(str(root), language="java")
+
+    assert warm == cold
+    assert ("p.b.Doc", "p.a.Pool", "import") in warm.to_edge_tuples()
+    assert ("p.a.Pool", "p.b.Doc", "import") not in warm.to_edge_tuples()
+    parser.assert_not_called()
 
 
 def test_cache_miss_returns_none(tmp_project):

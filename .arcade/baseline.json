@@ -155,7 +155,19 @@
         "arcade_agent.parsers.rust._PendingImpl",
         "arcade_agent.parsers.rust._PendingMethod",
         "arcade_agent.parsers.rust._References",
-        "arcade_agent.parsers.typescript.TypeScriptParser"
+        "arcade_agent.parsers.typescript.TypeScriptParser",
+        "arcade_agent.parsers.typescript._Declaration",
+        "arcade_agent.parsers.typescript._ExtractedFile",
+        "arcade_agent.parsers.typescript._Import",
+        "arcade_agent.parsers.typescript._ReExport",
+        "arcade_agent.parsers.typescript_resolution.ExternalImport",
+        "arcade_agent.parsers.typescript_resolution.ResolvedLocal",
+        "arcade_agent.parsers.typescript_resolution.TypeScriptModuleResolver",
+        "arcade_agent.parsers.typescript_resolution.UnresolvedLocal",
+        "arcade_agent.parsers.typescript_resolution._CompilerConfig",
+        "arcade_agent.parsers.typescript_resolution._PathMapping",
+        "arcade_agent.parsers.typescript_resolution._WorkspacePackage",
+        "arcade_agent.parsers.typescript_resolution.is_source_import"
       ]
     },
     {
@@ -216,19 +228,19 @@
     }
   ],
   "metrics": {
-    "RCI": 0.5586,
-    "TurboMQ": 2.6782,
-    "BasicMQ": 0.2435,
-    "IntraConnectivity": 0.016,
-    "InterConnectivity": 0.053,
+    "RCI": 0.5616,
+    "TurboMQ": 2.6798,
+    "BasicMQ": 0.2436,
+    "IntraConnectivity": 0.013,
+    "InterConnectivity": 0.0522,
     "TwoWayPairRatio": 0.0,
-    "DependencyHealth": 0.9708,
-    "ComponentBalance": 0.4723,
+    "DependencyHealth": 0.9713,
+    "ComponentBalance": 0.4569,
     "HubBalance": 0.5,
     "BoundaryClarity": 0.9545,
     "DependencyDistribution": 0.6294,
     "SmellDiscipline": 0.9455,
-    "PrincipleAlignmentScore": 0.8511,
-    "BalancedArchitectureScore": 0.6166
+    "PrincipleAlignmentScore": 0.8497,
+    "BalancedArchitectureScore": 0.6167
   }
 }

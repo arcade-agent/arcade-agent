@@ -1,11 +1,11 @@
 # arcade-agent
 
-[![CI](https://github.com/lemduc/arcade-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/lemduc/arcade-agent/actions/workflows/ci.yml)
+[![CI](https://github.com/arcade-agent/arcade-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/arcade-agent/arcade-agent/actions/workflows/ci.yml)
 [![PyPI version](https://img.shields.io/pypi/v/arcade-agent)](https://pypi.org/project/arcade-agent/)
 [![Python versions](https://img.shields.io/pypi/pyversions/arcade-agent)](https://pypi.org/project/arcade-agent/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![MCP compatible](https://img.shields.io/badge/MCP-compatible-blue)](https://modelcontextprotocol.io/)
-[![GitHub stars](https://img.shields.io/github/stars/lemduc/arcade-agent?style=social)](https://github.com/lemduc/arcade-agent/stargazers)
+[![GitHub stars](https://img.shields.io/github/stars/arcade-agent/arcade-agent?style=social)](https://github.com/arcade-agent/arcade-agent/stargazers)
 
 19 MCP tools · 4 task-shaped context tools · one git-versioned baseline · one pip install
 
@@ -157,7 +157,7 @@ python examples/basic_analysis.py arcade_core --language java
 
 Results (v1.2.0): 170 entities, 470 edges, 13 components recovered, 7 architectural smells detected (including a 7-component dependency cycle and concern overload in the Clustering module).
 
-See [`examples/arcade_core_report.html`](https://lemduc.github.io/arcade-agent/examples/arcade_core_report.html) for the full interactive report.
+See [`examples/arcade_core_report.html`](https://arcade-agent.github.io/arcade-agent/examples/arcade_core_report.html) for the full interactive report.
 
 ### Algorithm Comparison
 
@@ -167,7 +167,7 @@ Compare PKG, ACDC, ARC, and LIMBO recovery algorithms side-by-side on the same p
 python examples/compare_algorithms.py arcade_core --language java --use-llm
 ```
 
-See [`examples/comparison_report.html`](https://lemduc.github.io/arcade-agent/examples/comparison_report.html) for the full comparison report.
+See [`examples/comparison_report.html`](https://arcade-agent.github.io/arcade-agent/examples/comparison_report.html) for the full comparison report.
 
 ## MCP Server (AI Agent Integration)
 
@@ -291,7 +291,7 @@ This replaces heuristic smell detection (entity count thresholds, suffix matchin
 
 arcade-agent ships a GitHub Action that detects architecture drift on every PR
 — like SonarQube for architecture. Consumer repositories add a short workflow
-that calls `lemduc/arcade-agent/actions/analyze`, and the action runs released
+that calls `arcade-agent/arcade-agent/actions/analyze`, and the action runs released
 arcade-agent tooling from PyPI without checking out this repository's live
 source.
 
@@ -322,7 +322,7 @@ jobs:
       issues: write
       pull-requests: write
     steps:
-      - uses: lemduc/arcade-agent/actions/analyze@v0.3.0
+      - uses: arcade-agent/arcade-agent/actions/analyze@v0.3.0
         with:
           arcade-agent-version: "0.3.0"
 ```
@@ -330,7 +330,7 @@ jobs:
 Common optional inputs:
 
 ```yaml
-      - uses: lemduc/arcade-agent/actions/analyze@v0.3.0
+      - uses: arcade-agent/arcade-agent/actions/analyze@v0.3.0
         with:
           arcade-agent-version: "0.3.0"
           source-path: "."
