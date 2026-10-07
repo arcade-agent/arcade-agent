@@ -1,0 +1,82 @@
+{
+  "tokenizer": "tiktoken o200k_base",
+  "budget": 8000,
+  "rows": [
+    {
+      "repo": "arcade-agent",
+      "language": "python",
+      "files": 80,
+      "entities": 490,
+      "edges": 239,
+      "components": 11,
+      "source_tokens": 144506,
+      "full_tokens": 80372,
+      "budget_tokens": 7283,
+      "summarize_tokens": 1201
+    },
+    {
+      "repo": "click",
+      "language": "python",
+      "files": 16,
+      "entities": 509,
+      "edges": 201,
+      "components": 15,
+      "source_tokens": 78514,
+      "full_tokens": 91582,
+      "budget_tokens": 5947,
+      "summarize_tokens": 634
+    },
+    {
+      "repo": "HikariCP",
+      "language": "java",
+      "files": 48,
+      "entities": 557,
+      "edges": 370,
+      "components": 5,
+      "source_tokens": 68046,
+      "full_tokens": 92405,
+      "budget_tokens": 190,
+      "summarize_tokens": 1019
+    },
+    {
+      "repo": "disruptor",
+      "language": "java",
+      "files": 71,
+      "entities": 373,
+      "edges": 147,
+      "components": 3,
+      "source_tokens": 54940,
+      "full_tokens": 59379,
+      "budget_tokens": 7105,
+      "summarize_tokens": 1041
+    },
+    {
+      "repo": "caffeine",
+      "language": "java",
+      "files": 50,
+      "entities": 785,
+      "edges": 96,
+      "components": 2,
+      "source_tokens": 155290,
+      "full_tokens": 132270,
+      "budget_tokens": 149,
+      "summarize_tokens": 839
+    }
+  ],
+  "context_for_task": {
+    "task": "add a Ruby language parser",
+    "num_files": 14,
+    "tokens": 5113,
+    "top": [
+      "arcade_agent/parsers/typescript_resolution.py",
+      "arcade_agent/parsers/rust.py",
+      "arcade_agent/parsers/python.py",
+      "arcade_agent/parsers/typescript.py"
+    ]
+  },
+  "claude_over_o200k": {
+    "json": 1.09,
+    "python": 1.24,
+    "java": 1.253
+  }
+}

@@ -35,7 +35,7 @@ ENC = tiktoken.get_encoding("o200k_base")
 
 # name -> (git URL, tag, source root inside the clone, language, file suffix)
 REPOS: dict[str, tuple[str, str, str, str, str]] = {
-    "click": ("https://github.com/pallets/click.git", "8.1.7", "src/click", "python", ".py"),
+    "click": ("https://github.com/pallets/click.git", "8.1.7", "src", "python", ".py"),
     "HikariCP": ("https://github.com/brettwooldridge/HikariCP.git", "HikariCP-6.3.0",
                  "src/main/java", "java", ".java"),
     "disruptor": ("https://github.com/LMAX-Exchange/disruptor.git", "4.0.0",
