@@ -16,6 +16,29 @@ def _tokenize(text: str) -> list[str]:
     return [t for t in tokens if t and len(t) > 1]
 
 
+# Words that carry no location signal in a query or task description. Left in,
+# short ones such as "to" or "in" substring-match almost every file path.
+_STOPWORDS = frozenset(
+    """
+    a an and are as at be by can do does for from has have how i if in into is it
+    its me my of on or our should so that the their them then there these this
+    those to was we what when where which while who why will with would you your
+    add adds adding change create make new please support update use using
+    """.split()
+)
+
+
+def _query_keywords(text: str) -> list[str]:
+    """Tokenize a query or task, dropping stopwords and duplicates (order kept)."""
+    seen: set[str] = set()
+    keywords = []
+    for token in _tokenize(text):
+        if token not in _STOPWORDS and token not in seen:
+            seen.add(token)
+            keywords.append(token)
+    return keywords
+
+
 def _score_entity(
     fqn: str,
     name: str,
@@ -81,7 +104,7 @@ def find_relevant(
     Returns:
         Dict with ranked list of relevant entities.
     """
-    keywords = _tokenize(query)
+    keywords = _query_keywords(query)
     if not keywords:
         return {"query": query, "results": [], "error": "No searchable keywords found"}
 
