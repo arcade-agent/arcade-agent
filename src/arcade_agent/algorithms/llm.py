@@ -7,10 +7,15 @@ Set ``ARCADE_MODEL=haiku|sonnet|opus`` to select the Claude model (default: sonn
 
 import json
 import os
+import shutil
 import subprocess
 
 MOCK_MODE = os.environ.get("ARCADE_MOCK", "").strip() in ("1", "true", "yes")
 CLAUDE_MODEL = os.environ.get("ARCADE_MODEL", "sonnet")
+
+
+class LLMUnavailableError(RuntimeError):
+    """The ``claude`` CLI needed for LLM-assisted analysis is not installed."""
 
 
 def ask_claude(
@@ -29,9 +34,19 @@ def ask_claude(
 
     Returns:
         The raw text response from Claude.
+
+    Raises:
+        LLMUnavailableError: If the ``claude`` CLI is not on PATH.
     """
     if MOCK_MODE:
         return "{}"
+    if shutil.which("claude") is None:
+        raise LLMUnavailableError(
+            "LLM-assisted analysis (recover algorithm 'arc' or 'limbo', or "
+            "use_llm=True) needs the `claude` CLI on PATH. Install and log in to "
+            "Claude Code, choose a structural algorithm ('pkg', 'wca', 'acdc'), "
+            "or set ARCADE_MOCK=1 to use the name-based heuristic instead."
+        )
 
     model = model or CLAUDE_MODEL
     cmd = [

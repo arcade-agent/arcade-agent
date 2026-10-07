@@ -1,0 +1,34 @@
+name: Dogfood Architecture Analysis
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    - cron: '0 3 1 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write       # Cho phép post comment trực tiếp lên commit khi push
+  pull-requests: write  # Cho phép post/update comment khi có PR
+  issues: write
+
+jobs:
+  dogfood:
+    name: Self-Dogfooding Architecture Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Analyze Architecture (Dogfooding)
+        uses: arcade-agent/analyze-action@4db79fe26878a80405020f293fa478d42737c200 # v1.3.0
+        with:
+          source-path: 'src'
+          output-dir: 'public'
+          post-pr-comment: true
+          post-commit-comment: true
+          commit-comment-mode: 'impact'
+          commit-comment-branch-regex: '^(main|master)$'
+          fail-on-smells: false

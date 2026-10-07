@@ -100,3 +100,71 @@ def test_python_parser_skips_annotation_only_import_edges(tmp_path):
 
     assert ("pkg.service.annotation_only", "pkg.models.User", "import") not in edges
     assert ("pkg.service.runtime_use", "pkg.models.User", "import") in edges
+
+
+def _write(root, files):
+    paths = []
+    for rel, text in files.items():
+        path = root / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text)
+        paths.append(path)
+    return paths
+
+
+def test_python_parser_resolves_relative_imports(tmp_path):
+    paths = _write(tmp_path, {
+        "app/__init__.py": "",
+        "app/store/__init__.py": "",
+        "app/store/repo.py": "class Repo:\n    pass\n",
+        "app/api/__init__.py": "",
+        "app/api/sibling.py": "class Helper:\n    pass\n",
+        "app/api/orders.py": (
+            "from ..store.repo import Repo\n"
+            "from .sibling import Helper\n\n"
+            "def handler():\n"
+            "    return Repo(), Helper()\n"
+        ),
+    })
+
+    edges = PythonParser().parse(paths, tmp_path).to_edge_tuples()
+
+    assert ("app.api.orders.handler", "app.store.repo.Repo", "import") in edges
+    assert ("app.api.orders.handler", "app.api.sibling.Helper", "import") in edges
+
+
+def test_python_parser_relative_import_from_package_init(tmp_path):
+    paths = _write(tmp_path, {
+        "pkg/__init__.py": "from .core import Core\n\ndef make():\n    return Core()\n",
+        "pkg/core.py": "class Core:\n    pass\n",
+    })
+
+    edges = PythonParser().parse(paths, tmp_path).to_edge_tuples()
+
+    assert ("pkg.make", "pkg.core.Core", "import") in edges
+
+
+def test_python_parser_resolves_aliased_imports(tmp_path):
+    paths = _write(tmp_path, {
+        "pkg/__init__.py": "",
+        "pkg/models.py": "class User:\n    pass\n",
+        "pkg/service.py": (
+            "from pkg.models import User as Account\n\n"
+            "def make():\n"
+            "    return Account()\n"
+        ),
+    })
+
+    edges = PythonParser().parse(paths, tmp_path).to_edge_tuples()
+
+    assert ("pkg.service.make", "pkg.models.User", "import") in edges
+
+
+def test_python_parser_drops_imports_above_the_root(tmp_path):
+    paths = _write(tmp_path, {
+        "mod.py": "from ...outside import Thing\n\ndef f():\n    return Thing()\n",
+    })
+
+    graph = PythonParser().parse(paths, tmp_path)
+
+    assert graph.to_edge_tuples() == []
