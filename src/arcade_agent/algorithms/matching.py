@@ -1,4 +1,4 @@
-"""Cluster matching for architecture-to-architecture (A2A) comparison.
+"""Cluster matching for comparing two recovered architectures.
 
 Uses the Hungarian algorithm (linear sum assignment) to find optimal
 one-to-one matching between components of two architectures.
@@ -108,10 +108,13 @@ def match_components(
     return matches
 
 
-def compute_a2a_similarity(arch_a: Architecture, arch_b: Architecture) -> float:
-    """Compute overall architecture-to-architecture similarity.
+def compute_matched_similarity(arch_a: Architecture, arch_b: Architecture) -> float:
+    """Mean Jaccard similarity over the optimal one-to-one component matching.
 
-    Returns weighted average of component match similarities.
+    Unmatched components count as 0. This is *not* the a2a metric of
+    Behnamghader et al. (EMSE 2017), which is defined through the minimum
+    number of transform operations between two architectures; the two are not
+    comparable and should not be reported under the same name.
     """
     matches = match_components(arch_a, arch_b)
     if not matches:
@@ -119,3 +122,8 @@ def compute_a2a_similarity(arch_a: Architecture, arch_b: Architecture) -> float:
 
     total_sim = sum(m["similarity"] for m in matches)
     return round(total_sim / len(matches), 4)
+
+
+def compute_a2a_similarity(arch_a: Architecture, arch_b: Architecture) -> float:
+    """Deprecated alias of :func:`compute_matched_similarity` (not the published a2a)."""
+    return compute_matched_similarity(arch_a, arch_b)
