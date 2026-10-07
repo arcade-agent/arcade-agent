@@ -120,6 +120,13 @@ def eval_section(rows: list[dict[str, Any]]) -> str:
                 tv = sum(r["violated"] for r in t)
                 p = fisher_one_sided(sv, len(s) - sv, tv, len(t) - tv)
                 out += cmd(f"PSpecVs{other.title()}", f"{p:.2g}" if p >= 0.001 else r"<0.001")
+        if haiku.get("tools"):
+            def median(xs: list[float]) -> float:
+                xs = sorted(xs)
+                return xs[len(xs) // 2]
+            extra = median([r["wall_s"] for r in haiku["tools"]]) - median(
+                [r["wall_s"] for r in s])
+            out += cmd("ToolsExtraWall", f"{extra:.0f}")
     elif haiku.get("off"):
         o = haiku["off"]
         out += cmd("OffViol", sum(r["violated"] for r in o)) + cmd("OffN", len(o))
