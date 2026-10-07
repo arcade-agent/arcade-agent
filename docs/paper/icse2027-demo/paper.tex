@@ -80,20 +80,20 @@
 
 %==============================================================================
 \begin{abstract}
-Coding agents now write much of the code in many projects, and nothing in the
-agent's loop guards its architecture: type checkers, linters and tests run
+Coding agents now plan, write and test changes on their own, and nothing in
+their loop guards architecture: type checkers, linters and tests run
 continuously, while architecture conformance is checked in CI, if at all, after
 the code exists. We present \arcade{}, an installable library and Model Context
 Protocol server that makes architecture recovery, smell detection, decay
 metrics and conformance checking affordable for an agent to call while it
 works. Session handles and per-call token budgets keep responses small, and a
 deterministic guardrail answers \emph{where should this code go} and \emph{may
-it depend on that} before the code is written, and checks it after every change. In a controlled experiment on a
-greenfield task, a small model whose repository contained the specification
-violated it in \HaikuSpecViol{} of \HaikuSpecN{} runs; given the guardrail, in
-none of \HaikuToolsN{} --- mostly because the in-loop check caught and the agent
-repaired its own violations before finishing. The tool is MIT-licensed and installs with
-\tool{pip install arcade-agent}.
+it depend on that} while the agent works, and checks the result before it
+finishes. In a controlled experiment on a greenfield task, Claude Haiku~4.5
+violated a specification present in its repository in \HaikuSpecViol{} of
+\HaikuSpecN{} runs, and in none of \HaikuToolsN{} with the guardrail --- mostly
+because the in-loop check caught violations the agent then repaired. The tool
+is MIT-licensed and installs with \tool{pip install arcade-agent}.
 
 \smallskip
 \noindent Video: \url{\todo{YouTube URL}}
@@ -128,9 +128,9 @@ consults them continuously and cheaply. Nothing plays that role for
 architecture. Conformance checking is a mature
 idea~\cite{murphy1995reflexion,passos2010conformance,archunit}, but it runs in
 continuous integration, after the code is written, addressed to a human
-reviewer. For an agent that is both too late and too blunt: the code already
-exists, and a failed check that carries no remedy produces thrashing rather than
-repair. Meanwhile the decay such a check is meant to catch is measurable and
+reviewer. For an agent that is both too late and too blunt: by then the
+session that wrote the code has ended, and a failed check that names no remedy
+leaves the repair to someone else. Meanwhile the decay such a check is meant to catch is measurable and
 predicts where defects and costly change will
 land~\cite{le2018decay,le2021decay-predictor}.
 
@@ -138,12 +138,13 @@ We present \arcade{}, which moves architecture recovery, smell detection, decay
 metrics, and conformance checking inside the agent's loop. The analyses are
 established --- most come from the ARCADE line of work~\cite{laser2020arcade} ---
 and we claim no novelty for them. Our contribution is making them something an
-agent can afford to call, and can call \emph{before} the code exists:
+agent can afford to call while it is still working on the code:
 \begin{itemize}
   \item an installable, framework-agnostic analysis library with seven language
         parsers and five recovery algorithms;
-  \item a Model Context Protocol (MCP)~\cite{mcp} server whose 24 tools return session handles and respect a
-        per-call token budget, so an agent receives summaries, not dumps;
+  \item a Model Context Protocol (MCP)~\cite{mcp} server with 24 tools whose
+        analysis results come back as session handles under a per-call token
+        budget, so an agent receives summaries, not dumps;
   \item task-shaped context tools that answer an agent's actual questions ---
         what to read, what a change breaks --- instead of returning a graph;
   \item a deterministic architecture guardrail, available as MCP tools and as a
@@ -266,7 +267,8 @@ affordable. First, every tool returns a compact summary with a
 \tool{session\_id}; the analysed object stays server-side, downstream tools
 accept the ID, and \tool{get\_full\_result} retrieves it only on request, so an
 agent pipes \tool{parse} into \tool{recover} into \tool{detect\_smells} while
-the graph never crosses the wire. Second, every tool accepts \tool{max\_tokens}.
+the graph never crosses the wire. Second, every analysis tool accepts
+\tool{max\_tokens}.
 Payloads are reduced by ordered strategies --- truncate component member lists,
 collapse entities to an FQN$\rightarrow$kind map, collapse edges to per-relation
 counts, drop maps for counts --- re-checking the budget after each, so the
@@ -299,7 +301,7 @@ component edge is allowed; \tool{preview\_impact} applies it to a hypothetical
 edge and \tool{check\_architecture} to every actual one, so the answer before
 the import and the verdict after it cannot disagree. The same engine runs as
 \tool{arcade-guard check}, which exits non-zero on failure for a pre-commit hook
-or CI job, and as an agent hook after each edit. Conformance is computed over
+or CI job, and can run from an agent hook after each edit. Conformance is computed over
 \emph{referenced} dependencies: an import that is never used, or used only in a
 type annotation, does not create an edge.
 
@@ -474,7 +476,12 @@ documentation and the evaluation harness with all run records are at
 \url{https://arcade-agent.dev}. Limitations: cross-language linking is
 validated only for Java and Kotlin; parsers emit import, inheritance and
 reference edges, not call edges; incremental parsing covers Python only; and the
-guardrail checks structure, not behaviour.
+guardrail checks structure, not behavior.
+
+Architecture can be checked inside an agent's loop as cheaply and as
+deterministically as types and tests. On the task we studied, doing so turned
+rules that sat in the repository, often unread, into code that followed them,
+at the cost of about half a minute per task.
 
 \balance
 \bibliographystyle{IEEEtran}
