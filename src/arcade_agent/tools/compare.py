@@ -1,16 +1,16 @@
-"""Tool: Compare architectures across versions (A2A analysis)."""
+"""Tool: Compare architectures across versions (component matching)."""
 
 from typing import Any
 
 from arcade_agent.algorithms.architecture import Architecture
-from arcade_agent.algorithms.matching import compute_a2a_similarity, match_components
+from arcade_agent.algorithms.matching import compute_matched_similarity, match_components
 from arcade_agent.algorithms.provenance import classify_structural_changes, structural_dict
 from arcade_agent.tools.registry import tool
 
 
 @tool(
     name="compare",
-    description="Compare two architectures (A2A analysis). Matches components using "
+    description="Compare two architectures. Matches components one-to-one using "
     "the Hungarian algorithm and classifies additions, removals, splits and merges "
     "by entity provenance.",
 )
@@ -42,7 +42,7 @@ def compare(
         diff two different ways in one place.
     """
     matches = match_components(arch_a, arch_b)
-    overall_similarity = compute_a2a_similarity(arch_a, arch_b)
+    overall_similarity = compute_matched_similarity(arch_a, arch_b)
     changes = classify_structural_changes(arch_a, arch_b)
 
     return {
