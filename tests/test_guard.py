@@ -259,8 +259,21 @@ def test_propose_placement(spec: c.ArchitectureSpec, intent: str, component: str
 
 def test_propose_reports_dependency_guidance(spec: c.ArchitectureSpec) -> None:
     result = c.propose_placement(spec, "an HTTP endpoint")
-    assert result["may_depend_on"] == ["service"]
+    assert result["may_depend_on"] == ["service", "domain"]
     assert [m["component"] for m in result["must_not_depend_on"]] == ["store"]
+
+
+def test_propose_agrees_with_preview(spec: c.ArchitectureSpec) -> None:
+    for comp in spec.components:
+        result = c.propose_placement(spec, comp.name)
+        assert result["suggested_component"] == comp.name
+        for other in result["may_depend_on"]:
+            assert c.dependency_problems(spec, comp.name, other) == []
+        for item in result["must_not_depend_on"]:
+            assert c.dependency_problems(spec, comp.name, item["component"])
+        listed = set(result["may_depend_on"]) | {m["component"] for m in
+                                                 result["must_not_depend_on"]}
+        assert listed == set(spec.component_names()) - {comp.name}
 
 
 def test_propose_without_match_says_so(spec: c.ArchitectureSpec) -> None:

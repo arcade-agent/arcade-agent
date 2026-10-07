@@ -23,7 +23,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   glob-valued `forbid` rule can no longer be allowed by one and failed by the
   other.
 - `**/api/**` no longer matches `rapid/` or `api_old/`.
-- `propose_placement` ranks by whole-word matches plus a per-layer role
+- `propose_placement` lists as allowed exactly the dependencies `preview_impact`
+  allows (it previously listed only explicit `allow` rules), and ranks by
+  whole-word matches plus a per-layer role
   vocabulary and optional per-component `keywords`, instead of substring tests.
 - The `max_new_smells` budget is reported as not evaluated when no baseline
   smell count is available, instead of being skipped silently.

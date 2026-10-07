@@ -492,13 +492,15 @@ def propose_placement(spec: ArchitectureSpec, intent: str) -> dict[str, Any]:
             + ", ".join(spec.component_names()),
         }
 
+    # "May depend on" is exactly what dependency_problems() permits, so the
+    # guidance can never contradict preview_impact or check_architecture.
     others = [c.name for c in spec.components if c.name != best.name]
     may, must_not = [], []
     for other in others:
         problems = dependency_problems(spec, best.name, other)
         if problems:
             must_not.append({"component": other, "why": problems[0].message})
-        elif _is_allowed(spec, best.name, other):
+        else:
             may.append(other)
     return {
         "intent": intent,
