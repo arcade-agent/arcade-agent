@@ -7,7 +7,7 @@
 [![MCP compatible](https://img.shields.io/badge/MCP-compatible-blue)](https://modelcontextprotocol.io/)
 [![GitHub stars](https://img.shields.io/github/stars/arcade-agent/arcade-agent?style=social)](https://github.com/arcade-agent/arcade-agent/stargazers)
 
-19 MCP tools · 4 task-shaped context tools · one git-versioned baseline · one pip install
+24 MCP tools · 4 task-shaped context tools · one git-versioned baseline · one pip install
 
 Docs: https://arcade-agent.dev
 
@@ -18,9 +18,9 @@ Provides composable tools for parsing source code, recovering architecture, dete
 ## Install
 
 ```bash
-pip install -e ".[dev]"
+pip install "arcade-agent[mcp,languages]"   # library, MCP server, all parsers
 
-# With MCP and all optional language parsers (for polyglot AI agent integration)
+# From a checkout, for development
 pip install -e ".[mcp,languages,dev]"
 ```
 
@@ -85,8 +85,13 @@ print(len(result.architecture.components), len(result.smells))
 | `diff_impact` | Map changed files to affected components, downstream dependents, and broken contracts |
 | `dependency_cone` | Upstream/downstream dependency cone of an entity or file, with depth control |
 | `context_for_task` | Rank the minimal set of files to read for a natural-language task |
+| `init_spec` | Scaffold an `architecture.spec.json` (layered, hexagonal, clean, mvc) |
+| `propose_placement` | Before writing code: which component new code belongs in and what it may depend on |
+| `preview_impact` | Before adding an import: would a component dependency be allowed? |
+| `check_architecture` | After a change: PASS/WARN/FAIL against the spec, each violation with a fix |
+| `remediate` | Ranked fixes that restore conformance |
 
-Plus two session helpers — `get_full_result` and `list_sessions` — for a total of 19 MCP tools.
+Plus two session helpers — `get_full_result` and `list_sessions` — for a total of 24 MCP tools.
 
 ## Balanced Architecture Score
 
@@ -276,6 +281,47 @@ confused for each other. When such an FQN coincidence happens across families
 both entities are kept — the later one re-keyed as `<fqn>#<language>` — and the
 counts appear in the graph's `metadata` (`fqn_collisions`,
 `fqn_collisions_cross_family`, …), so nothing is silently dropped.
+
+## Architecture Guardrail
+
+The guardrail checks code against an architecture you write down, while the
+code is being written. The contract is an `architecture.spec.json` that maps
+path globs to components and layers and lists allowed and forbidden
+dependencies:
+
+```json
+{
+  "components": [
+    {"name": "api",     "match": "**/api/**",     "layer": "presentation"},
+    {"name": "service", "match": "**/service/**", "layer": "application"},
+    {"name": "store",   "match": "**/store/**",   "layer": "infrastructure"}
+  ],
+  "layers": ["presentation", "application", "domain", "infrastructure"],
+  "allow":  [{"from": "presentation", "to": "application"},
+             {"from": "application",  "to": "infrastructure"}],
+  "forbid": [{"from": "presentation", "to": "infrastructure",
+              "why": "the API goes through the service layer"}],
+  "budgets": {"no_cycles": true, "max_fan_in": 8}
+}
+```
+
+An agent calls `propose_placement` before writing new code, `preview_impact`
+before a cross-component import, and `check_architecture` afterwards. The same
+checks run from the command line, so a pre-commit hook or CI job can block a
+violating change:
+
+```bash
+arcade-guard init . --template layered
+arcade-guard propose . --intent "an endpoint that lists orders"
+arcade-guard preview . --from api --to store     # WOULD VIOLATE
+arcade-guard check . --fail-on error             # exit 1 on FAIL
+```
+
+Verdicts are deterministic: entities are assigned to components by path, not by
+clustering, and `preview_impact` and `check_architecture` evaluate the same
+rule function, so they cannot disagree. Conformance is computed over
+*referenced* dependencies: an import that is never used, or used only in a type
+annotation, does not count as an edge.
 
 ## LLM-Powered Analysis
 

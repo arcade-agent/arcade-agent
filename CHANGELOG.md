@@ -5,6 +5,31 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Added
+
+- Architecture guardrail, moved into the package from the
+  `arcade-analyze-skill` plugin: `algorithms/conformance.py` (the engine),
+  `tools/guard.py` (`init_spec`, `propose_placement`, `preview_impact`,
+  `check_architecture`, `remediate`), the same five as MCP tools, and an
+  `arcade-guard` console script for pre-commit and CI gating.
+
+### Fixed (relative to the plugin's guard scripts)
+
+- Brace globs such as `**/{api,web}/**` now match; the `layered` and `clean`
+  templates previously matched no files.
+- `preview_impact` and `check_architecture` share one rule function, so a
+  glob-valued `forbid` rule can no longer be allowed by one and failed by the
+  other.
+- `**/api/**` no longer matches `rapid/` or `api_old/`.
+- `propose_placement` ranks by whole-word matches plus a per-layer role
+  vocabulary and optional per-component `keywords`, instead of substring tests.
+- The `max_new_smells` budget is reported as not evaluated when no baseline
+  smell count is available, instead of being skipped silently.
+- The MCP tools write nothing to stdout, which on the stdio transport is the
+  protocol channel.
+
 ## 0.3.0 — 2026-08-21
 
 Also in this release: **Rust** parser support, **polyglot multi-language
