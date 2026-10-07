@@ -515,7 +515,7 @@ def _build_server():  # type: ignore[no-untyped-def]
         arch_b: str,
         max_tokens: int | None = None,
     ) -> str:
-        """Compare two architectures (A2A analysis).
+        """Compare two architectures by one-to-one component matching.
 
         Matches components using the Hungarian algorithm and tracks additions,
         removals, splits, and merges.
@@ -921,6 +921,128 @@ def _build_server():  # type: ignore[no-untyped-def]
         )
         serialized = serialize_result(result)
         return json.dumps(_apply_budget(serialized, max_tokens), indent=2)
+
+    # -- architecture guardrail --------------------------------------------------
+    # Spec problems come back as {"error": ...} rather than exceptions, so an
+    # agent can read the message and act on it (e.g. call init_spec).
+
+    def _guarded(fn: Any, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        try:
+            result: dict[str, Any] = fn(*args, **kwargs)
+        except (FileNotFoundError, FileExistsError, ValueError) as exc:
+            return {"error": str(exc)}
+        return result
+
+    @server.tool()
+    def init_spec(
+        source_path: str,
+        template: str = "layered",
+        overwrite: bool = False,
+    ) -> str:
+        """Scaffold an architecture.spec.json for the guardrail tools.
+
+        Args:
+            source_path: Project root to write the spec into.
+            template: One of "layered", "hexagonal", "clean", "mvc".
+            overwrite: Replace an existing spec.
+        """
+        from arcade_agent.tools.guard import init_spec as _init_spec
+
+        return json.dumps(_guarded(_init_spec, source_path, template, overwrite), indent=2)
+
+    @server.tool()
+    def propose_placement(
+        intent: str,
+        source_path: str = ".",
+        spec_path: str | None = None,
+    ) -> str:
+        """Call BEFORE writing new code: where does it belong, and what may it use?
+
+        Returns the component and layer the described code belongs in, its path
+        convention, and the components it may and must not depend on, according
+        to the project's architecture.spec.json.
+
+        Args:
+            intent: What you are about to add, in plain words.
+            source_path: Project root (the spec is looked up there).
+            spec_path: Explicit spec location.
+        """
+        from arcade_agent.tools.guard import propose_placement as _propose
+
+        return json.dumps(_guarded(_propose, intent, source_path, spec_path), indent=2)
+
+    @server.tool()
+    def preview_impact(
+        from_component: str,
+        to_component: str,
+        source_path: str = ".",
+        spec_path: str | None = None,
+    ) -> str:
+        """Call BEFORE adding a cross-component import: would it be allowed?
+
+        Uses the same rules as check_architecture, so a dependency this tool
+        allows will not later fail the check.
+
+        Args:
+            from_component: Component that would gain the dependency.
+            to_component: Component it would depend on.
+            source_path: Project root (the spec is looked up there).
+            spec_path: Explicit spec location.
+        """
+        from arcade_agent.tools.guard import preview_impact as _preview
+
+        return json.dumps(
+            _guarded(_preview, from_component, to_component, source_path, spec_path),
+            indent=2,
+        )
+
+    @server.tool()
+    def check_architecture(
+        source_path: str,
+        spec_path: str | None = None,
+        dep_graph: str | None = None,
+        language: str | None = None,
+        max_tokens: int | None = None,
+    ) -> str:
+        """Call AFTER a change: does the code still conform to its architecture?
+
+        Returns PASS/WARN/FAIL with each violation, the rule it breaks, and a
+        concrete fix. Deterministic: the same code always gets the same verdict.
+        Fix every error before committing.
+
+        Args:
+            source_path: Project root.
+            spec_path: Spec location (default <source_path>/architecture.spec.json).
+            dep_graph: Optional session ID from 'parse' to skip re-parsing.
+            language: Language to parse when dep_graph is omitted (auto if None).
+            max_tokens: Optional token budget for the response.
+        """
+        from arcade_agent.tools.guard import check_architecture as _check
+
+        graph_obj = _resolve(dep_graph, "DependencyGraph") if dep_graph else None
+        result = _guarded(
+            _check, source_path, spec_path, dep_graph=graph_obj, language=language
+        )
+        return json.dumps(_apply_budget(result, max_tokens), indent=2)
+
+    @server.tool()
+    def remediate(
+        source_path: str,
+        spec_path: str | None = None,
+        language: str | None = None,
+    ) -> str:
+        """Return the ranked fixes (errors first) that restore conformance.
+
+        Args:
+            source_path: Project root.
+            spec_path: Spec location.
+            language: Language to parse (auto if None).
+        """
+        from arcade_agent.tools.guard import remediate as _remediate
+
+        return json.dumps(
+            _guarded(_remediate, source_path, spec_path, language=language), indent=2
+        )
 
     # -- get_full_result -------------------------------------------------------
 
