@@ -118,3 +118,64 @@ def test_package_based_recovery_reassigns_thin_facades():
 def test_unknown_algorithm(sample_graph):
     with pytest.raises(ValueError, match="Unknown algorithm"):
         recover(sample_graph, algorithm="unknown")
+
+
+def _java_entity(fqn: str, package: str, kind: str = "class") -> Entity:
+    return Entity(
+        fqn=fqn,
+        name=fqn.rsplit(".", 1)[-1],
+        package=package,
+        file_path=fqn.replace(".", "/") + ".java",
+        kind=kind,
+        language="java",
+    )
+
+
+def test_package_based_recovery_keeps_root_package_classes_together():
+    # Disruptor-shaped: most classes (and their methods) live in the root
+    # package that is also the common prefix. They used to become one
+    # component per class or even per method.
+    root = "com.lmax.disruptor"
+    entities = [
+        _java_entity(f"{root}.Sequencer", root, "interface"),
+        _java_entity(f"{root}.Sequencer.next", root, "method"),
+        _java_entity(f"{root}.RingBuffer", root),
+        _java_entity(f"{root}.RingBuffer.publish", root, "method"),
+        _java_entity(f"{root}.dsl.Disruptor", f"{root}.dsl"),
+        _java_entity(f"{root}.dsl.Disruptor.start", f"{root}.dsl", "method"),
+        _java_entity(f"{root}.util.Util", f"{root}.util"),
+    ]
+    graph = DependencyGraph(entities={e.fqn: e for e in entities}, edges=[])
+
+    arch = recover(graph, algorithm="pkg")
+
+    by_name = {c.name: set(c.entities) for c in arch.components}
+    assert set(by_name) == {"Disruptor", "Dsl", "Util"}
+    assert by_name["Disruptor"] == {
+        f"{root}.Sequencer",
+        f"{root}.Sequencer.next",
+        f"{root}.RingBuffer",
+        f"{root}.RingBuffer.publish",
+    }
+
+
+def test_package_entity_joins_its_sub_package_group():
+    # A Python package's __init__ module: package == common prefix, FQN names
+    # the sub-package.
+    entities = {
+        "app.api": Entity(fqn="app.api", name="api", package="app",
+                          file_path="app/api/__init__.py", kind="module",
+                          language="python"),
+        "app.api.routes.handler": Entity(fqn="app.api.routes.handler", name="handler",
+                                         package="app.api.routes",
+                                         file_path="app/api/routes.py", kind="function",
+                                         language="python"),
+        "app.store.repo.Repo": Entity(fqn="app.store.repo.Repo", name="Repo",
+                                      package="app.store.repo",
+                                      file_path="app/store/repo.py", kind="class",
+                                      language="python"),
+    }
+    arch = recover(DependencyGraph(entities=entities, edges=[]), algorithm="pkg", pkg_depth=1)
+
+    members = {c.name: set(c.entities) for c in arch.components}
+    assert "app.api" in members["Api"]
