@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Compare current analysis results against a baseline and output Markdown.
 
-Uses arcade-agent's compare tool (A2A analysis with Hungarian algorithm) for
+Uses arcade-agent's compare tool (one-to-one component matching via the Hungarian algorithm) for
 proper architecture-to-architecture comparison when entity data is available.
 
 Usage:
@@ -655,7 +655,7 @@ def build_report_payload(
         {"label": "Current Classes", "value": current.get("class_count", 0)},
         {"label": "Current Methods", "value": current.get("method_count", 0)},
         {
-            "label": "A2A Similarity",
+            "label": "Component-match similarity",
             "value": f"{a2a_result['overall_similarity']:.4f}" if a2a_result else "n/a",
         },
     ]
@@ -801,7 +801,7 @@ def _reconstruct_architecture(data: dict) -> Architecture | None:
 
 
 def _run_a2a_comparison(baseline: dict, current: dict) -> dict | None:
-    """Run A2A comparison using arcade-agent's compare tool."""
+    """Run the component-match comparison using arcade-agent's compare tool."""
     arch_a = _reconstruct_architecture(baseline)
     arch_b = _reconstruct_architecture(current)
     if arch_a is None or arch_b is None:
@@ -1046,19 +1046,20 @@ def build_comment(
         bl_smells = baseline.get("smells", [])
         bl_commit = baseline.get("commit_sha", "unknown")[:7]
 
-        # Run A2A comparison via arcade-agent's compare tool
+        # Run the component-match comparison via arcade-agent's compare tool
         a2a_result = _run_a2a_comparison(baseline, current)
 
         lines.append("### 📈 Evolution vs Baseline\n")
         lines.append(f"_Baseline commit: `{bl_commit}`_\n")
 
-        # A2A similarity section
+        # Component-match similarity section
         if a2a_result:
             summary = a2a_result["summary"]
-            lines.append("#### Architecture-to-Architecture (A2A) Comparison\n")
+            lines.append("#### Component-Match Comparison\n")
             lines.append("| Metric | Value |")
             lines.append("|--------|-------|")
-            lines.append(f"| A2A Similarity | **{a2a_result['overall_similarity']:.4f}** |")
+            similarity = a2a_result["overall_similarity"]
+            lines.append(f"| Component-match similarity | **{similarity:.4f}** |")
             lines.append(f"| Matched Components | {summary['total_matches']} |")
             lines.append(f"| Components Added | {summary['components_added']} |")
             lines.append(f"| Components Removed | {summary['components_removed']} |")
@@ -1203,17 +1204,19 @@ def build_comment(
             trend = "➡️ Stable architectural quality"
         lines.append(f"- **Trend**: {trend}")
 
-        # A2A insight
+        # Component-match insight
         a2a_result = _run_a2a_comparison(baseline, current)
         if a2a_result:
             sim = a2a_result["overall_similarity"]
             if sim >= 0.9:
-                lines.append(f"- **Architecture Stability**: 🟢 High (A2A={sim:.4f})")
+                lines.append(f"- **Architecture Stability**: 🟢 High (match similarity={sim:.4f})")
             elif sim >= 0.7:
-                lines.append(f"- **Architecture Stability**: 🟡 Moderate (A2A={sim:.4f})")
+                lines.append(
+                    f"- **Architecture Stability**: 🟡 Moderate (match similarity={sim:.4f})"
+                )
             else:
                 lines.append(
-                    f"- **Architecture Stability**: 🔴 Low (A2A={sim:.4f}) "
+                    f"- **Architecture Stability**: 🔴 Low (match similarity={sim:.4f}) "
                     "— significant restructuring detected"
                 )
 
@@ -1326,7 +1329,7 @@ def main() -> None:
         bl_quality_score = _quality_snapshot_score(baseline)
         cur_quality_score = _quality_snapshot_score(current)
 
-        # A2A comparison
+        # Component-match comparison
         a2a_result = _run_a2a_comparison(baseline, current)
         if a2a_result:
             summary = a2a_result["summary"]
