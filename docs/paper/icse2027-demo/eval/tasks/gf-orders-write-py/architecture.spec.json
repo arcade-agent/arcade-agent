@@ -1,0 +1,22 @@
+{
+  "intent": "Layered orders service. Dependencies point inward: api -> service -> domain, with infrastructure (store) depended on by service only. The API layer must never touch the store directly.",
+  "components": [
+    {"name": "api",     "match": "**/api/**",     "layer": "presentation"},
+    {"name": "service", "match": "**/service/**", "layer": "application"},
+    {"name": "store",   "match": "**/store/**",   "layer": "infrastructure"},
+    {"name": "domain",  "match": "**/domain/**",  "layer": "domain"}
+  ],
+  "layers": ["presentation", "application", "domain", "infrastructure"],
+  "allow": [
+    {"from": "presentation", "to": "application"},
+    {"from": "application", "to": "domain"},
+    {"from": "application", "to": "infrastructure"},
+    {"from": "infrastructure", "to": "domain"}
+  ],
+  "forbid": [
+    {"from": "presentation", "to": "infrastructure", "why": "the API must go through the service layer, never the store directly"},
+    {"from": "domain", "to": "application", "why": "the domain must stay pure"},
+    {"from": "domain", "to": "infrastructure", "why": "the domain must stay pure"}
+  ],
+  "budgets": {"no_cycles": true, "max_new_smells": 0, "max_component_entities": 50, "max_fan_in": 5}
+}

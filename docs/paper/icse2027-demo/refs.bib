@@ -1,159 +1,248 @@
 %==============================================================================
-% refs.bib -- ICSE 2027 tool demonstration
-%
-% VERIFICATION STATUS, read this before trusting any entry:
-%
-%  [VERIFIED]  Authors, title, venue and year confirmed against
-%              arcade-agent-site/src/pages/research.astro. Volume, number,
-%              pages and DOI still need filling from the publisher record.
-%
-%  [STUB]      Placeholder. The work is real and well known, but the fields
-%              here were written from memory and are NOT verified. Confirm
-%              every field against the publisher record (DOI, pages, exact
-%              title, author order) before submitting. Do not ship a [STUB].
-%
-% Single-anonymous review, so self-citation needs no masking.
+% refs.bib -- ICSE 2027 tool demonstration (verified 2026-10-07)
+% Every entry checked against Crossref / publisher / arXiv / official site.
+% See refs.report.md for the source URL of each entry.
 %==============================================================================
 
 %------------------------------------------------------------------ self-cites
-% [VERIFIED]
 @inproceedings{laser2020arcade,
-  author    = {Marcelo Schmitt Laser and Nenad Medvidovi{\'c} and Duc M. Le and Joshua Garcia},
+  author    = {Marcelo Schmitt Laser and Nenad Medvidovi{\'c} and Duc Minh Le and Joshua Garcia},
   title     = {{ARCADE}: An Extensible Workbench for Architecture Recovery, Change, and Decay Evaluation},
-  booktitle = {Proc. ACM Joint European Software Engineering Conf. and Symp. on the Foundations of Software Engineering (ESEC/FSE)},
+  booktitle = {Proc. 28th ACM Joint European Software Engineering Conf. and Symp. on the Foundations of Software Engineering (ESEC/FSE)},
+  pages     = {1546--1550},
   year      = {2020},
-  note      = {TODO: pages, DOI}
+  doi       = {10.1145/3368089.3417941}
 }
 
-% [VERIFIED] -- MSR 2015 Best Paper Award; mentioning the award is optional.
 @inproceedings{le2015change,
-  author    = {Duc M. Le and Pooyan Behnamghader and Joshua Garcia and Daniel Link and Arman Shahbazian and Nenad Medvidovi{\'c}},
+  author    = {Duc Minh Le and Pooyan Behnamghader and Joshua Garcia and Daniel Link and Arman Shahbazian and Nenad Medvidovi{\'c}},
   title     = {An Empirical Study of Architectural Change in Open-Source Software Systems},
-  booktitle = {Proc. IEEE/ACM Working Conf. on Mining Software Repositories (MSR)},
+  booktitle = {Proc. 12th IEEE/ACM Working Conf. on Mining Software Repositories (MSR)},
+  pages     = {235--245},
   year      = {2015},
-  note      = {TODO: pages, DOI}
+  doi       = {10.1109/MSR.2015.29}
 }
 
-% [VERIFIED]
 @inproceedings{le2018decay,
-  author    = {Duc M. Le and Daniel Link and Arman Shahbazian and Nenad Medvidovi{\'c}},
-  title     = {An Empirical Study of Architectural Decay in Open-Source Software Systems},
+  author    = {Duc Minh Le and Daniel Link and Arman Shahbazian and Nenad Medvidovi{\'c}},
+  title     = {An Empirical Study of Architectural Decay in Open-Source Software},
   booktitle = {Proc. IEEE Int. Conf. on Software Architecture (ICSA)},
+  pages     = {176--185},
   year      = {2018},
-  note      = {TODO: pages, DOI}
+  doi       = {10.1109/ICSA.2018.00027}
 }
 
-% [VERIFIED]
 @inproceedings{le2021decay-predictor,
-  author    = {Duc M. Le and Suhrid Karthik and Marcelo Schmitt Laser and Nenad Medvidovi{\'c}},
+  author    = {Duc Minh Le and Suhrid Karthik and Marcelo Schmitt Laser and Nenad Medvidovi{\'c}},
   title     = {Architectural Decay as Predictor of Issue- and Change-Proneness},
-  booktitle = {Proc. IEEE Int. Conf. on Software Architecture (ICSA)},
+  booktitle = {Proc. 18th IEEE Int. Conf. on Software Architecture (ICSA)},
+  pages     = {92--103},
   year      = {2021},
-  note      = {TODO: pages, DOI}
+  doi       = {10.1109/ICSA51549.2021.00017}
 }
 
-% [VERIFIED]
 @article{behnamghader2017evolution,
-  author  = {Pooyan Behnamghader and Duc M. Le and Joshua Garcia and Daniel Link and Arman Shahbazian and Nenad Medvidovi{\'c}},
+  author  = {Pooyan Behnamghader and Duc Minh Le and Joshua Garcia and Daniel Link and Arman Shahbazian and Nenad Medvidovi{\'c}},
   title   = {A Large-Scale Study of Architectural Evolution in Open-Source Software Systems},
   journal = {Empirical Software Engineering},
+  volume  = {22},
+  number  = {3},
+  pages   = {1146--1193},
   year    = {2017},
-  note    = {TODO: volume, number, pages, DOI}
+  doi     = {10.1007/s10664-016-9466-0}
 }
 
-% [VERIFIED] -- cite only if a thesis citation earns its space in 4 pages.
 @phdthesis{le2018thesis,
-  author = {Duc M. Le},
+  author = {Duc Minh Le},
   title  = {Architectural Evolution and Decay in Software Systems},
   school = {University of Southern California},
   year   = {2018}
 }
 
 %--------------------------------------------------------- the human premise
-% [STUB]
 @book{brooks1975mythical,
-  author    = {Frederick P. Brooks, Jr.},
+  author    = {Frederick P. {Brooks, Jr.}},
   title     = {The Mythical Man-Month: Essays on Software Engineering},
+  edition   = {Anniversary},
   publisher = {Addison-Wesley},
-  year      = {1975},
-  note      = {STUB -- verify edition and publisher; the 1995 anniversary
-               edition is the one usually cited}
+  year      = {1995},
+  isbn      = {0-201-83595-9}
 }
 
 %--------------------------------------------------------- recovery algorithms
-% Every entry below is [STUB]. These are the algorithms arcade-agent
-% reimplements, so getting them wrong is the most embarrassing possible error
-% in this paper. Verify each one.
-
-% [STUB]
 @inproceedings{tzerpos2000acdc,
   author    = {Vassilios Tzerpos and Richard C. Holt},
   title     = {{ACDC}: An Algorithm for Comprehension-Driven Clustering},
-  booktitle = {Proc. Working Conf. on Reverse Engineering (WCRE)},
+  booktitle = {Proc. 7th Working Conf. on Reverse Engineering (WCRE)},
+  pages     = {258--267},
   year      = {2000},
-  note      = {STUB -- verify all fields against the publisher record}
+  doi       = {10.1109/WCRE.2000.891477}
 }
 
-% [STUB]
 @inproceedings{garcia2011arc,
   author    = {Joshua Garcia and Daniel Popescu and Chris Mattmann and Nenad Medvidovi{\'c} and Yuanfang Cai},
   title     = {Enhancing Architectural Recovery Using Concerns},
-  booktitle = {Proc. IEEE/ACM Int. Conf. on Automated Software Engineering (ASE)},
+  booktitle = {Proc. 26th IEEE/ACM Int. Conf. on Automated Software Engineering (ASE)},
+  pages     = {552--555},
   year      = {2011},
-  note      = {STUB -- verify author list, title and venue; this is the ARC reference}
+  doi       = {10.1109/ASE.2011.6100123}
 }
 
-% [STUB]
-@inproceedings{andritsos2004limbo,
-  author    = {Periklis Andritsos and Vassilios Tzerpos},
-  title     = {Information-Theoretic Software Clustering},
-  booktitle = {TODO: venue},
+@article{andritsos2004limbo,
+  author  = {Periklis Andritsos and Vassilios Tzerpos},
+  title   = {Information-Theoretic Software Clustering},
+  journal = {IEEE Transactions on Software Engineering},
+  volume  = {31},
+  number  = {2},
+  pages   = {150--165},
+  year    = {2005},
+  doi     = {10.1109/TSE.2005.25}
+}
+
+@inproceedings{maqbool2004wca,
+  author    = {Onaiza Maqbool and Haroon A. Babri},
+  title     = {The Weighted Combined Algorithm: A Linkage Algorithm for Software Clustering},
+  booktitle = {Proc. 8th European Conf. on Software Maintenance and Reengineering (CSMR)},
+  pages     = {15--24},
   year      = {2004},
-  note      = {STUB -- verify venue and year; LIMBO also has a journal version in IEEE TSE}
-}
-
-% [STUB]
-@article{maqbool2004wca,
-  author  = {Onaiza Maqbool and Haroon A. Babri},
-  title   = {The Weighted Combined Algorithm: A Linkage Algorithm for Software Clustering},
-  journal = {TODO: venue},
-  year    = {2004},
-  note    = {STUB -- verify; WCA appears in CSMR 2004 and in later TSE work}
+  doi       = {10.1109/CSMR.2004.1281402}
 }
 
 %------------------------------------------------------ conformance and decay
-% [STUB]
 @inproceedings{murphy1995reflexion,
   author    = {Gail C. Murphy and David Notkin and Kevin Sullivan},
   title     = {Software Reflexion Models: Bridging the Gap Between Source and High-Level Models},
-  booktitle = {Proc. ACM SIGSOFT Symp. on the Foundations of Software Engineering (FSE)},
+  booktitle = {Proc. 3rd ACM SIGSOFT Symp. on the Foundations of Software Engineering (FSE)},
+  pages     = {18--28},
   year      = {1995},
-  note      = {STUB -- verify all fields}
+  doi       = {10.1145/222124.222136}
 }
 
-% [STUB] -- a URL citation may be acceptable for an industrial tool; check the
-% track's reference conventions, and prefer a peer-reviewed alternative if the
-% reference budget is tight.
+@article{passos2010conformance,
+  author  = {Leonardo Passos and Ricardo Terra and Marco Tulio Valente and Renato Diniz and Nabor das Chagas Mendon{\c{c}}a},
+  title   = {Static Architecture-Conformance Checking: An Illustrative Overview},
+  journal = {IEEE Software},
+  volume  = {27},
+  number  = {5},
+  pages   = {82--89},
+  year    = {2010},
+  doi     = {10.1109/MS.2009.117}
+}
+
+@inproceedings{garcia2013groundtruth,
+  author    = {Joshua Garcia and Ivo Krka and Chris Mattmann and Nenad Medvidovi{\'c}},
+  title     = {Obtaining Ground-Truth Software Architectures},
+  booktitle = {Proc. 35th Int. Conf. on Software Engineering (ICSE)},
+  pages     = {901--910},
+  year      = {2013},
+  doi       = {10.1109/ICSE.2013.6606639}
+}
+
 @misc{archunit,
-  title = {{ArchUnit}: Unit Test Your Architecture},
+  title        = {{ArchUnit}: Unit Test Your {Java} Architecture},
   howpublished = {\url{https://www.archunit.org}},
-  note  = {STUB -- verify URL and access date, or replace with a peer-reviewed
-           industrial conformance reference (Lattix, Structure101, Sonargraph)}
+  note         = {Accessed Oct. 2026}
+}
+
+%----------------------------------------------------- static analysis in practice
+@inproceedings{tricorder,
+  author    = {Caitlin Sadowski and Jeffrey van Gogh and Ciera Jaspan and Emma S{\"o}derberg and Collin Winter},
+  title     = {Tricorder: Building a Program Analysis Ecosystem},
+  booktitle = {Proc. 37th IEEE/ACM Int. Conf. on Software Engineering (ICSE)},
+  pages     = {598--608},
+  year      = {2015},
+  doi       = {10.1109/ICSE.2015.76}
+}
+
+@article{sadowski2018lessons,
+  author  = {Caitlin Sadowski and Edward Aftandilian and Alex Eagle and Liam Miller-Cushon and Ciera Jaspan},
+  title   = {Lessons from Building Static Analysis Tools at {Google}},
+  journal = {Communications of the ACM},
+  volume  = {61},
+  number  = {4},
+  pages   = {58--66},
+  year    = {2018},
+  doi     = {10.1145/3188720}
 }
 
 %-------------------------------------------------------- agents and protocol
-% [STUB]
 @misc{mcp,
-  title = {Model Context Protocol Specification},
-  howpublished = {\url{https://modelcontextprotocol.io}},
-  note  = {STUB -- verify the canonical citable URL and the spec revision to cite}
+  author       = {{Model Context Protocol}},
+  title        = {Model Context Protocol Specification, Revision 2026-07-28},
+  howpublished = {\url{https://modelcontextprotocol.io/specification/2026-07-28}},
+  year         = {2026},
+  note         = {Accessed Oct. 2026}
 }
 
-% PLACEHOLDER so the skeleton builds without an undefined-citation error.
-% Replace with 2--3 current references on agent context construction,
-% repository maps, and SWE-bench-style harnesses. Choose recent work; this is
-% the cluster a reviewer is most likely to find under-cited.
-@misc{TODO-agent-context,
-  title = {PLACEHOLDER -- agent context construction and repository comprehension},
-  note  = {MUST be replaced before submission. See OUTLINE.md Sec. 7.}
+@inproceedings{swebench,
+  author    = {Carlos E. Jimenez and John Yang and Alexander Wettig and Shunyu Yao and Kexin Pei and Ofir Press and Karthik Narasimhan},
+  title     = {{SWE-bench}: Can Language Models Resolve Real-World {GitHub} Issues?},
+  booktitle = {Proc. 12th Int. Conf. on Learning Representations (ICLR)},
+  year      = {2024},
+  url       = {https://openreview.net/forum?id=VTF8yNQM66}
+}
+
+@inproceedings{sweagent,
+  author    = {John Yang and Carlos E. Jimenez and Alexander Wettig and Kilian Lieret and Shunyu Yao and Karthik Narasimhan and Ofir Press},
+  title     = {{SWE-agent}: Agent-Computer Interfaces Enable Automated Software Engineering},
+  booktitle = {Advances in Neural Information Processing Systems 37 (NeurIPS)},
+  pages     = {50528--50652},
+  year      = {2024},
+  doi       = {10.52202/079017-1601}
+}
+
+@article{agentless,
+  author  = {Chunqiu Steven Xia and Yinlin Deng and Soren Dunn and Lingming Zhang},
+  title   = {Demystifying {LLM}-Based Software Engineering Agents},
+  journal = {Proc. ACM on Software Engineering},
+  volume  = {2},
+  number  = {FSE},
+  pages   = {801--824},
+  year    = {2025},
+  doi     = {10.1145/3715754}
+}
+
+@inproceedings{repograph,
+  author    = {Siru Ouyang and Wenhao Yu and Kaixin Ma and Zilin Xiao and Zhihan Zhang and Mengzhao Jia and Jiawei Han and Hongming Zhang and Dong Yu},
+  title     = {{RepoGraph}: Enhancing {AI} Software Engineering with Repository-level Code Graph},
+  booktitle = {Proc. 13th Int. Conf. on Learning Representations (ICLR)},
+  year      = {2025},
+  url       = {https://proceedings.iclr.cc/paper_files/paper/2025/hash/4a4a3c197deac042461c677219efd36c-Abstract-Conference.html}
+}
+
+@inproceedings{codexgraph,
+  author    = {Xiangyan Liu and Bo Lan and Zhiyuan Hu and Yang Liu and Zhicheng Zhang and Fei Wang and Michael Qizhe Shieh and Wenmeng Zhou},
+  title     = {{CodexGraph}: Bridging Large Language Models and Code Repositories via Code Graph Databases},
+  booktitle = {Proc. 2025 Conf. of the Nations of the Americas Chapter of the Association for Computational Linguistics: Human Language Technologies (NAACL-HLT), Vol. 1: Long Papers},
+  pages     = {142--160},
+  year      = {2025},
+  doi       = {10.18653/v1/2025.naacl-long.7}
+}
+
+@misc{aider-repomap,
+  author       = {{Aider}},
+  title        = {Repository Map},
+  howpublished = {\url{https://aider.chat/docs/repomap.html}},
+  note         = {Accessed Oct. 2026}
+}
+
+@misc{zhu2026decay,
+  author        = {Yuecai Zhu and Nikolaos Tsantalis and Peter C. Rigby},
+  title         = {{AI}-Generated Smells: An Analysis of Code and Architecture in {LLM} and Agent-Driven Development},
+  year          = {2026},
+  eprint        = {2605.02741},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.SE},
+  howpublished  = {arXiv:2605.02741},
+  url           = {https://arxiv.org/abs/2605.02741}
+}
+
+@misc{smellbench2026,
+  author        = {Ion George Dinu and Marian Cristian Mih{\u{a}}escu and Traian Rebedea},
+  title         = {{SmellBench}: Evaluating {LLM} Agents on Architectural Code Smell Repair},
+  year          = {2026},
+  eprint        = {2605.07001},
+  archivePrefix = {arXiv},
+  howpublished  = {arXiv:2605.07001},
+  url           = {https://arxiv.org/abs/2605.07001}
 }

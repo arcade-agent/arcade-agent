@@ -1,0 +1,17 @@
+{
+  "id": "gf-orders-write-py",
+  "language": "python",
+  "setting": "greenfield",
+  "style": "layered",
+  "packages": [
+    "api",
+    "service",
+    "store",
+    "domain"
+  ],
+  "tempts": "api imports the store directly (presentation -> infrastructure)",
+  "feature": "an `OrdersApi` class in app/api that can be constructed with no arguments (`OrdersApi()` wires up whatever it needs) and has two methods: `place_order(self, user_id, total)` that creates a new Order, stores it in an in-memory store, and returns the new order's integer id; and `get_order(self, order_id)` that returns the order as {\"id\", \"total\"} or None. Define an `Order` entity (id, user_id, total) in app/domain.",
+  "folder_roles": "Put HTTP-facing code in app/api, business logic in app/service, data access (the in-memory store) in app/store, and entities in app/domain. Use absolute imports like `from app.x.y import Z`.",
+  "rules_summary": "The api must not import from app.store directly; it goes through app.service. The domain must not import from app.service or app.store.",
+  "functional_check": "from app.api.orders_api import OrdersApi\napi = OrdersApi()\noid = api.place_order(7, 12.5)\nassert isinstance(oid, int), oid\ngot = api.get_order(oid)\nassert got is not None and got['id'] == oid and got['total'] == 12.5, got\nassert api.get_order(oid + 999) is None\n"
+}

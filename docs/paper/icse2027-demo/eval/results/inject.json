@@ -1,0 +1,45 @@
+[
+  {
+    "case": "conformant",
+    "exit": 0,
+    "verdict": "PASS",
+    "rules": []
+  },
+  {
+    "case": "api imports store",
+    "exit": 1,
+    "verdict": "FAIL",
+    "rules": [
+      "forbidden-dependency"
+    ],
+    "messages": [
+      "api -> store is forbidden: the API must go through the service layer, never the store directly"
+    ]
+  },
+  {
+    "case": "store imports service",
+    "exit": 1,
+    "verdict": "FAIL",
+    "rules": [
+      "dependency-cycle",
+      "layer-violation"
+    ],
+    "messages": [
+      "store (infrastructure) -> service (application) points against the layer order",
+      "Mutually dependent components: service, store"
+    ]
+  },
+  {
+    "case": "domain imports store",
+    "exit": 1,
+    "verdict": "FAIL",
+    "rules": [
+      "dependency-cycle",
+      "forbidden-dependency"
+    ],
+    "messages": [
+      "domain -> store is forbidden: the domain must stay pure",
+      "Mutually dependent components: domain, store"
+    ]
+  }
+]
