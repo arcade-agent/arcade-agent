@@ -74,7 +74,7 @@ print(len(result.architecture.components), len(result.smells))
 | `recover` | Recover architecture (PKG, WCA, ACDC, ARC, LIMBO) |
 | `detect_smells` | Find dependency cycles, concern overload, scattered functionality, link overload (heuristic or LLM-powered) |
 | `compute_metrics` | Calculate RCI, TurboMQ, connectivity metrics |
-| `compare` | A2A architecture comparison across versions |
+| `compare` | Component-match comparison across versions (Jaccard over a one-to-one matching; not the published a2a) |
 | `changelog_architecture` | Architectural changelog between two versions: components added/removed/renamed/rewritten/split/merged, entities that changed component, smell and metric deltas |
 | `visualize` | Generate HTML reports, DOT, Mermaid, JSON, RSF |
 | `query` | Explore recovered architecture interactively |
@@ -390,7 +390,7 @@ arcade-agent ports and extends the capabilities of the original [ARCADE](https:/
 | 4 smell types (BDC, BCO, SPF, BUO) | Done | Heuristic + LLM-powered detection |
 | 6 quality metrics | Done | RCI, TurboMQ, BasicMQ, IntraConnectivity, InterConnectivity, TwoWayPairRatio |
 | Balanced architecture score | Done | Derived reporting score combining core metrics, principle signals, and smell burden |
-| A2A architecture comparison | Done | Hungarian algorithm on Jaccard similarity |
+| Component-match comparison | Done | Hungarian algorithm on Jaccard similarity (the published a2a, based on transform operations, is not implemented) |
 | Multi-language parsing | Done | Java, Python, C/C++, TypeScript/JavaScript, Go (full); Kotlin, Rust (structural); polyglot merge+relink via `languages=[...]` / `language="multi"` (cross-language edges within the JVM family only) |
 | 5 export formats | Done | HTML, DOT, JSON, RSF, Mermaid |
 | LLM concern extraction | Done | Claude CLI for semantic BCO/SPF detection |

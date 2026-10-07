@@ -5,9 +5,14 @@ Instead of MALLET topic modeling, uses Claude CLI to assign semantic concern
 labels to entities, then clusters using Jensen-Shannon divergence on the
 resulting concern vectors — optionally combined with structural similarity.
 
+This is an approximation, not the published algorithm: concerns come from an
+LLM reading entity names, packages, imports and inheritance (not a topic model
+over source text), and labels are not seeded or cached, so results can vary
+between runs. Use ``pkg``, ``wca`` or ``acdc`` where determinism matters.
+
 Reference:
-    Garcia, Ivens & Medvidovic (2013). "Obtaining Ground-Truth Software
-    Architectures." ICSE Workshop on Software Architecture.
+    Garcia, Popescu, Mattmann, Medvidovic & Cai (2011). "Enhancing
+    Architectural Recovery Using Concerns." Proc. IEEE/ACM ASE, pp. 552-555.
 """
 
 from __future__ import annotations

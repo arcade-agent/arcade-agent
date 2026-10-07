@@ -515,7 +515,7 @@ def _build_server():  # type: ignore[no-untyped-def]
         arch_b: str,
         max_tokens: int | None = None,
     ) -> str:
-        """Compare two architectures (A2A analysis).
+        """Compare two architectures by one-to-one component matching.
 
         Matches components using the Hungarian algorithm and tracks additions,
         removals, splits, and merges.

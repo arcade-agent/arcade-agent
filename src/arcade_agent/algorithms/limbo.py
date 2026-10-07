@@ -4,6 +4,10 @@ Structurally identical to ARC — same concern vectors, same merge strategy — 
 uses **information loss** (size-weighted JS divergence) as the merge criterion
 instead of maximizing JS similarity.
 
+This is an approximation, not the published algorithm: it clusters ARC's
+LLM-assigned concern vectors rather than structural features summarized in a
+DCF-tree, and inherits ARC's run-to-run variation.
+
 Reference:
     Andritsos, Dumitriu & Tzerpos (2005). "Information-Theoretic Software
     Clustering." IEEE Transactions on Software Engineering.
