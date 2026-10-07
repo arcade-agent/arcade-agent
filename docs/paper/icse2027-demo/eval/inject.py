@@ -46,6 +46,11 @@ INJECTIONS = {
         "from app.store.orders_store import OrdersStore\n"
         "def count():\n    return len(OrdersStore().rows)\n",
     ),
+    "api imports store (relative)": (
+        "app/api/shortcut.py",
+        "from ..store.orders_store import OrdersStore\n"
+        "def count():\n    return len(OrdersStore().rows)\n",
+    ),
     "store imports service": (
         "app/store/cache.py",
         "from app.service.orders_service import OrdersService\n"

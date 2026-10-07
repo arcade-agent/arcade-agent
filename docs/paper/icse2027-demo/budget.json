@@ -9,7 +9,7 @@
       "entities": 490,
       "edges": 239,
       "components": 11,
-      "source_tokens": 144506,
+      "source_tokens": 144707,
       "full_tokens": 80372,
       "budget_tokens": 7283,
       "summarize_tokens": 1201
@@ -31,11 +31,11 @@
       "language": "java",
       "files": 48,
       "entities": 557,
-      "edges": 370,
+      "edges": 548,
       "components": 5,
       "source_tokens": 68046,
-      "full_tokens": 92405,
-      "budget_tokens": 190,
+      "full_tokens": 98126,
+      "budget_tokens": 196,
       "summarize_tokens": 1019
     },
     {
@@ -43,11 +43,11 @@
       "language": "java",
       "files": 71,
       "entities": 373,
-      "edges": 147,
+      "edges": 505,
       "components": 3,
       "source_tokens": 54940,
-      "full_tokens": 59379,
-      "budget_tokens": 7105,
+      "full_tokens": 72126,
+      "budget_tokens": 7104,
       "summarize_tokens": 1041
     },
     {
@@ -55,11 +55,11 @@
       "language": "java",
       "files": 50,
       "entities": 785,
-      "edges": 96,
+      "edges": 505,
       "components": 2,
       "source_tokens": 155290,
-      "full_tokens": 132270,
-      "budget_tokens": 149,
+      "full_tokens": 148286,
+      "budget_tokens": 155,
       "summarize_tokens": 839
     }
   ],

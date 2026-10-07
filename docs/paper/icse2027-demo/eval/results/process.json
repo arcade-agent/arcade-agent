@@ -1,0 +1,22 @@
+{
+  "haiku/on": {
+    "runs": 20,
+    "check_failed_then_repaired": 6,
+    "preview_warned": 7
+  },
+  "haiku/tools": {
+    "runs": 20,
+    "check_failed_then_repaired": 12,
+    "preview_warned": 6
+  },
+  "sonnet/on": {
+    "runs": 6,
+    "check_failed_then_repaired": 0,
+    "preview_warned": 0
+  },
+  "sonnet/tools": {
+    "runs": 6,
+    "check_failed_then_repaired": 0,
+    "preview_warned": 0
+  }
+}

@@ -65,7 +65,7 @@
 
 \begin{document}
 
-\title{\arcade{}: Architecture Recovery and Conformance\\Inside the Coding Agent's Loop}
+\title{\arcade{}: Architecture Recovery and Conformance Inside the Coding Agent's Loop}
 
 \author{
   \IEEEauthorblockN{Duc Minh Le\todo{affiliation, email}}
@@ -86,8 +86,11 @@ Protocol server that makes architecture recovery, smell detection, decay
 metrics and conformance checking affordable for an agent to call while it
 works. Session handles and per-call token budgets keep responses small, and a
 deterministic guardrail answers \emph{where should this code go} and \emph{may
-it depend on that} before the code is written. In a controlled experiment on a
-greenfield task, \ResultSentence{} The tool is MIT-licensed and installs with
+it depend on that} before the code is written, and checks it after every change. In a controlled experiment on a
+greenfield task, a small model whose repository contained the specification
+violated it in \HaikuSpecViol{} of \HaikuSpecN{} runs; given the guardrail, in
+none of \HaikuToolsN{} --- mostly because the in-loop check caught and the agent
+repaired its own violations before finishing. The tool is MIT-licensed and installs with
 \tool{pip install arcade-agent}.
 
 \smallskip
@@ -143,7 +146,7 @@ agent can afford to call, and can call \emph{before} the code exists:
         what to read, what a change breaks --- instead of returning a graph;
   \item a deterministic architecture guardrail, available as MCP tools and as a
         pre-commit/CI gate, and a controlled experiment that separates what it
-        adds from simply stating the rules.
+        adds from stating the rules, and shows where its effect comes from.
 \end{itemize}
 
 %==============================================================================
@@ -159,11 +162,13 @@ API class has to wire up its own collaborators.
 The shortest path to a working feature is for \tool{OrdersApi} to construct the
 store itself, or to skip the service layer entirely. Both pass every test. In
 our experiment (Sec.~\ref{sec:evidence}) an agent without architectural guidance
-took one of these paths in \OffViol{} of \OffN{} runs (Fig.~\ref{fig:scenario},
-left). With the guardrail it calls \tool{propose\_placement} before writing,
-learns that persistence belongs in \tool{store} and that \tool{api} may depend
-only on \tool{service}, checks the edge it is about to add with
-\tool{preview\_impact}, and routes through the service instead
+took one of these paths in \HaikuOffViol{} of \HaikuOffN{} runs (Fig.~\ref{fig:scenario},
+left). That is a defensible design --- the API acts as the composition root ---
+but it is not this system's design, and nothing in the agent's loop says so.
+With the guardrail the agent asks \tool{propose\_placement} where each piece
+belongs, asks \tool{preview\_impact} before cross-component imports, and runs
+\tool{check\_architecture} before it finishes; when the check fails, the
+violation's fix tells it to let the service own the store
 (Fig.~\ref{fig:scenario}, right).
 
 \begin{figure}[t]
@@ -211,28 +216,25 @@ the guardrail and the CI entry points consume that core rather than wrap it
 
 \begin{figure}[t]
   \centering
-  \begin{tikzpicture}[node distance=0.3cm]
-    \node[box, minimum width=7.9cm] (agent) {coding agent (Claude Code, Cursor, \dots)};
-    \node[box, below=0.35cm of agent, xshift=-2.05cm, minimum width=3.8cm] (mcp)
+  \begin{tikzpicture}[every node/.style={box}]
+    \node[text width=8.0cm] (agent) at (0,0) {coding agent (Claude Code, Cursor, \dots)};
+    \node[text width=3.8cm] (mcp) at (-2.1,-0.95)
       {MCP server \tool{arcade-mcp}\\[-1pt]\tiny session handles $\cdot$ token budgets};
-    \node[box, below=0.35cm of agent, xshift=2.05cm, minimum width=3.8cm] (cli)
-      {\tool{arcade-guard} CLI\\[-1pt]\tiny hook $\cdot$ pre-commit $\cdot$ CI gate};
-    \node[box, below=0.35cm of mcp, minimum width=3.8cm] (an)
-      {analysis tools\\[-1pt]\tiny summarize, context\_for\_task, diff\_impact, \dots};
-    \node[box, below=0.35cm of cli, minimum width=3.8cm] (gd)
-      {conformance engine\\[-1pt]\tiny propose $\cdot$ preview $\cdot$ check};
-    \node[box, below=0.35cm of an, xshift=2.05cm, minimum width=7.9cm] (core)
-      {core: 7 parsers $\rightarrow$ dependency graph $\rightarrow$ recovery (pkg, wca, acdc, arc, limbo) $\rightarrow$ smells, metrics};
-    \node[box, right=0.15cm of gd.north east, anchor=north west, minimum width=1.1cm,
-          fill=yellow!12] (spec) {\tiny architecture\\[-2pt]\tiny\tool{.spec.json}};
-    \draw[dep] (agent) -- (mcp);
-    \draw[dep] (agent) -- (cli);
+    \node[text width=3.8cm] (cli) at (2.1,-0.95)
+      {\tool{arcade-guard} CLI\\[-1pt]\tiny agent hook $\cdot$ pre-commit $\cdot$ CI};
+    \node[text width=3.8cm] (an) at (-2.1,-2.0)
+      {analysis tools\\[-1pt]\tiny summarize, context\_for\_task, diff\_impact};
+    \node[text width=3.8cm, fill=yellow!10] (gd) at (2.1,-2.0)
+      {conformance engine\\[-1pt]\tiny propose $\cdot$ preview $\cdot$ check $\leftarrow$ \tool{.spec.json}};
+    \node[text width=8.0cm] (core) at (0,-3.05)
+      {core: 7 parsers $\rightarrow$ graph $\rightarrow$ recovery $\rightarrow$ smells, metrics};
+    \draw[dep] (agent.south -| mcp) -- (mcp);
+    \draw[dep] (agent.south -| cli) -- (cli);
     \draw[dep] (mcp) -- (an);
-    \draw[dep] (mcp.east) -- (gd.north west);
+    \draw[dep] (mcp.south east) -- (gd.north west);
     \draw[dep] (cli) -- (gd);
     \draw[dep] (an) -- (an |- core.north);
     \draw[dep] (gd) -- (gd |- core.north);
-    \draw[dep, dashed] (spec) -- (gd);
   \end{tikzpicture}
   \caption{\arcade{} in the agent's loop. The MCP tools and the CLI gate call
   one conformance engine, so their verdicts cannot disagree.}
@@ -267,11 +269,16 @@ Payloads are reduced by ordered strategies --- truncate component member lists,
 collapse entities to an FQN$\rightarrow$kind map, collapse edges to per-relation
 counts, drop maps for counts --- re-checking the budget after each, so the
 cheapest sufficient reduction wins and the response is flagged as partial.
-Table~\ref{tab:budget} shows the effect.
+Table~\ref{tab:budget} shows the effect on five repositories. Two caveats are
+visible in it: the full graph costs about as much as the source itself, so the
+savings come from summaries and budgets, not from the graph; and reduction is
+coarse --- when a step that keeps the entity map does not fit, the next drops
+it, so two repositories fall to under 200 tokens at an 8k budget.
 
 \begin{table}[t]
   \centering
-  \caption{Tokens to load an architecture, by repository and access path.}
+  \caption{Tokens per access path: reading the source, the full graph and
+  architecture, the same under \tool{max\_tokens}{=}8000, and \tool{summarize}.}
   \label{tab:budget}
   \footnotesize
   \BudgetTable
@@ -301,9 +308,9 @@ type annotation, does not create an edge.
 The demonstration video follows one agent session end to end.
 
 \paragraph*{Setup}
-\tool{pip install "arcade-agent[mcp,languages]"} installs the library, the
-\tool{arcade-mcp} server, which the agent launches over stdio, and the
-\tool{arcade-guard} CLI. Reading a codebase needs no configuration; the
+One command installs the library, the stdio MCP server
+\tool{arcade-mcp}, and the \tool{arcade-guard} gate:
+\centerline{\tool{pip install "arcade-agent[mcp,languages]"}} Reading a codebase needs no configuration; the
 guardrail needs a spec, which \tool{init\_spec} scaffolds from a layered,
 hexagonal, clean or MVC template.
 
@@ -325,8 +332,10 @@ the task's vocabulary and the code's diverge.
 Before writing, the agent calls \tool{propose\_placement} with a description of
 what it is about to add and learns the component it belongs in and what that
 component may depend on. Before a cross-component import it calls
-\tool{preview\_impact}. Fig.~\ref{fig:transcript} shows a session from our
-experiment in which the agent asks before it writes.
+\tool{preview\_impact}. Fig.~\ref{fig:transcript} shows a recorded session:
+warned that \tool{api}$\rightarrow$\tool{store} would violate, the agent still
+wired the store into the API; the check failed, and the agent repaired the code
+using the fix it was given.
 
 \paragraph*{Gate}
 After the edit, \tool{check\_architecture} returns PASS, WARN or FAIL, each
@@ -336,7 +345,27 @@ recovered architecture as a baseline, so each pull request is compared with the
 last accepted state.
 
 \begin{figure}[t]
-\TranscriptListing
+\begin{lstlisting}
+$ arcade-guard preview . --from api --to store
+  WOULD VIOLATE: api -> store
+  - forbidden-dependency: api -> store is forbidden:
+    the API must go through the service layer
+$ arcade-guard propose . --intent "Add OrdersApi HTTP class"
+  Place it in: api (layer: presentation)
+  must NOT depend on store: api -> store is forbidden
+[write] app/api/orders_api.py
+$ arcade-guard check .                       # exit code 1
+  FAIL: 1 error(s), 0 warning(s), 14 entities
+  [ERROR] forbidden-dependency: api -> store ...
+    fix: Remove the dependency from api to store, or route
+    it through a component both may use.
+agent: "The API is importing OrderStore directly ... Let me
+  fix this by having the service create its own store."
+[edit] app/service/order_service.py
+[edit] app/api/orders_api.py
+$ arcade-guard check .
+  PASS: 0 error(s), 0 warning(s), 14 entities
+\end{lstlisting}
   \caption{Excerpt of a recorded agent session (\tool{tools} condition,
   Sec.~\ref{sec:evidence}); agent commands and guardrail output, abridged.}
   \label{fig:transcript}
@@ -368,21 +397,45 @@ Table~\ref{tab:eval} reports the results.
   \EvalTable
 \end{table}
 
-\EvidenceProse
+Without a specification, Haiku took the shortcut in every run
+(\HaikuOffViol{}/\HaikuOffN{}); in \HaikuOffCompRoot{} of those runs it made the
+API the composition root rather than skipping the service. Placing the spec in the
+repository helped only partly (\HaikuSpecViol{}/\HaikuSpecN{}): the agent did
+not always read it. Stating the rules in the prompt eliminated violations
+(\HaikuAdvisoryViol{}/\HaikuAdvisoryN{}), and so did the guardrail without the
+rules being stated (\HaikuToolsViol{}/\HaikuToolsN{}; one-sided Fisher exact
+test against spec only, $p=\PSpecVsTools{}$). The guardrail therefore matters
+when the rules live in the repository rather than in every prompt --- the
+usual case. Every agent given the guardrail used it, with a mean of \HaikuToolsProposeAvg{} \tool{propose},
+\HaikuToolsPreviewAvg{} \tool{preview} and \HaikuToolsCheckAvg{} \tool{check}
+calls per run.
+
+The proactive calls were not what prevented violations. In
+\HaikuToolsRepaired{} of the \HaikuToolsN{} guardrail runs the agent wrote the
+forbidden import anyway --- sometimes right after \tool{preview} had warned
+it --- and \tool{check} reported it; the agent repaired it before finishing. The
+value is the check inside the loop, delivered with a fix while the agent still
+holds the context: the same violation reported by CI hours later would need a
+second session. The cost was time, not correctness: every run in every
+condition passed the functional test, and guardrail runs took a median
+\HaikuToolsWall{}\,s against \HaikuSpecWall{}\,s (\$\HaikuToolsCost{} against
+\$\HaikuSpecCost{} per run). Sonnet violated once without a specification and
+never with one, leaving the guardrail nothing to add on this task.
 
 \paragraph*{Detection}
-Separately, we injected three shortcuts into a conformant version of the
-service --- the API importing the store, the store importing the service, the
-domain importing the store. \tool{check\_architecture} reported each with the
-expected rule (\InjectRules{}) and \tool{arcade-guard check} exited 1 every
-time.
+Separately, we injected \InjectN{} shortcuts into a conformant version of the
+service --- the API importing the store (absolutely and relatively), the store
+importing the service, and the domain importing the store. The gate reported
+each with the expected rule and exited 1 (\InjectCaught{}/\InjectN{}); the
+conformant version passed.
 
 \paragraph*{Threats to validity}
 One task, one language, and one agent harness: the result shows the mechanism
 works, not how often it matters in practice. Folder roles were stated in every
 condition, which nudges toward layering, so the unaided rate is likely a floor.
-The models are \ModelNames{}; behaviour differs across models, and Sonnet's
-lower violation rate leaves less room for the guardrail to help. Conformance is
+The models are \ModelNames{} (\NumRuns{} runs). The task required
+\tool{OrdersApi()} to take no arguments, which invites wiring in the API; that
+raises the base rate, and a different task would show a different one. Conformance is
 structural; the functional test checks the feature, not code quality.
 
 %==============================================================================
@@ -413,8 +466,7 @@ contract the agent can query and measures conformance of its output.
 \section{Availability and Limitations}
 \label{sec:conclusion}
 %==============================================================================
-\arcade{} is MIT-licensed:
-\tool{pip install "arcade-agent[mcp,languages]"} (Python $\ge$3.12). Source,
+\arcade{} is MIT-licensed and needs Python $\ge$3.12. Source,
 documentation and the evaluation harness with all run records are at
 \url{https://github.com/arcade-agent/arcade-agent} and
 \url{https://arcade-agent.dev}. Limitations: cross-language linking is

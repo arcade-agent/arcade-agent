@@ -17,6 +17,17 @@
     ]
   },
   {
+    "case": "api imports store (relative)",
+    "exit": 1,
+    "verdict": "FAIL",
+    "rules": [
+      "forbidden-dependency"
+    ],
+    "messages": [
+      "api -> store is forbidden: the API must go through the service layer, never the store directly"
+    ]
+  },
+  {
     "case": "store imports service",
     "exit": 1,
     "verdict": "FAIL",
