@@ -192,6 +192,9 @@ class JavaParser(LanguageParser):
         entities: dict[str, Entity] = {}
         edges: list[Edge] = []
         packages: dict[str, list[str]] = {}
+        # Simple names each entity references; same-package types need no
+        # import, so these are the only evidence of that coupling.
+        refs_by_fqn: dict[str, set[str]] = {}
 
         # First pass: collect all entities
         for java_file in files:
@@ -211,6 +214,8 @@ class JavaParser(LanguageParser):
                 class_name = decl["name"]
                 fqn = f"{package}.{class_name}" if package else class_name
 
+                decl_refs = _extract_referenced_names(decl["node"])
+                refs_by_fqn[fqn] = decl_refs
                 entity = Entity(
                     fqn=fqn,
                     name=class_name,
@@ -218,7 +223,7 @@ class JavaParser(LanguageParser):
                     file_path=rel_path,
                     kind=decl["kind"],
                     language="java",
-                    imports=_used_imports(imports, _extract_referenced_names(decl["node"])),
+                    imports=_used_imports(imports, decl_refs),
                     superclass=decl["superclass"],
                     interfaces=decl["interfaces"],
                 )
@@ -228,6 +233,8 @@ class JavaParser(LanguageParser):
 
                 for method_decl in _extract_methods(decl, package):
                     method_fqn = f"{method_decl['owner_fqn']}.{method_decl['name']}"
+                    method_refs = _extract_referenced_names(method_decl["node"])
+                    refs_by_fqn[method_fqn] = method_refs
                     entities[method_fqn] = Entity(
                         fqn=method_fqn,
                         name=method_decl["name"],
@@ -235,9 +242,7 @@ class JavaParser(LanguageParser):
                         file_path=rel_path,
                         kind="method",
                         language="java",
-                        imports=_used_imports(
-                            imports, _extract_referenced_names(method_decl["node"])
-                        ),
+                        imports=_used_imports(imports, method_refs),
                         properties={"owner": method_decl["owner_fqn"]},
                     )
                     packages.setdefault(package, []).append(method_fqn)
@@ -260,6 +265,19 @@ class JavaParser(LanguageParser):
                         edges.append(
                             Edge(source=entity.fqn, target=fqn_index[simple], relation="import")
                         )
+
+            # Same-package type references (no import needed in Java)
+            owner = entity.properties.get("owner") if entity.properties else None
+            for name in refs_by_fqn.get(entity.fqn, ()):
+                if not name[:1].isupper():
+                    continue
+                target = f"{entity.package}.{name}" if entity.package else name
+                if (
+                    target in entities
+                    and target not in (entity.fqn, owner)
+                    and entities[target].kind != "method"
+                ):
+                    edges.append(Edge(source=entity.fqn, target=target, relation="uses"))
 
             # Inheritance edge
             if entity.superclass:

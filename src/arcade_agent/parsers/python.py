@@ -52,35 +52,86 @@ def _extract_module_name(file_path: Path, root: Path) -> str:
     return ".".join(parts)
 
 
+def _imported_name(node) -> tuple[str, str]:
+    """Return (name, local alias) for a ``dotted_name`` or ``aliased_import`` node."""
+    if node.type == "aliased_import":
+        name = node.child_by_field_name("name")
+        alias = node.child_by_field_name("alias")
+        name_text = _get_text(name) if name is not None else ""
+        return name_text, _get_text(alias) if alias is not None else name_text
+    text = _get_text(node)
+    return text, text
+
+
 def _extract_imports(root_node) -> list[dict]:
     """Extract import statements from a Python file.
 
-    Returns list of dicts with 'module' and 'names' keys.
+    Returns dicts with ``module`` (as written, without leading dots), ``level``
+    (number of leading dots; 0 for absolute imports), ``names`` (imported names)
+    and ``aliases`` (name -> local alias, only for ``as`` imports). Relative
+    modules are resolved against the importing file's package by
+    :func:`_resolve_relative_imports`.
     """
     imports = []
 
     for child in root_node.children:
         if child.type == "import_statement":
-            # import foo, import foo.bar
+            # import foo, import foo.bar, import foo as f
             for sub in child.children:
-                if sub.type == "dotted_name":
-                    imports.append({"module": _get_text(sub), "names": []})
+                if sub.type in ("dotted_name", "aliased_import"):
+                    module, _alias = _imported_name(sub)
+                    imports.append({"module": module, "level": 0, "names": [], "aliases": {}})
 
         elif child.type == "import_from_statement":
-            # from foo import bar, baz
-            module = ""
-            names = []
-            for sub in child.children:
-                if sub.type == "dotted_name" and not module:
-                    module = _get_text(sub)
-                elif sub.type == "dotted_name":
-                    names.append(_get_text(sub))
-                elif sub.type == "import_prefix":
-                    # relative imports like "from . import"
-                    module = _get_text(sub)
-            imports.append({"module": module, "names": names})
+            # from foo import bar, baz as qux; from ..foo import bar; from . import bar
+            module_node = child.child_by_field_name("module_name")
+            module, level = "", 0
+            if module_node is not None and module_node.type == "relative_import":
+                for part in module_node.children:
+                    if part.type == "import_prefix":
+                        level = len(_get_text(part).strip())
+                    elif part.type == "dotted_name":
+                        module = _get_text(part)
+            elif module_node is not None:
+                module = _get_text(module_node)
+            names: list[str] = []
+            aliases: dict[str, str] = {}
+            for name_node in child.children_by_field_name("name"):
+                name, alias = _imported_name(name_node)
+                if name:
+                    names.append(name)
+                    if alias != name:
+                        aliases[name] = alias
+            imports.append({"module": module, "level": level, "names": names,
+                            "aliases": aliases})
 
     return imports
+
+
+def _resolve_relative_imports(
+    imports: list[dict], module_name: str, is_package: bool
+) -> list[dict]:
+    """Rewrite relative imports to absolute module names.
+
+    ``from ..store import x`` in ``app.api.orders`` resolves to ``app.store``;
+    in a package ``__init__`` the package itself is the anchor. Imports that
+    climb above the parse root are dropped, as Python itself would reject them.
+    """
+    anchor = module_name.split(".") if module_name else []
+    if not is_package:
+        anchor = anchor[:-1]
+    resolved = []
+    for imp in imports:
+        level = imp.get("level", 0)
+        if level == 0:
+            resolved.append(imp)
+            continue
+        if level - 1 > len(anchor):
+            continue
+        base = anchor[: len(anchor) - (level - 1)]
+        parts = base + ([imp["module"]] if imp["module"] else [])
+        resolved.append({**imp, "module": ".".join(parts), "level": 0})
+    return resolved
 
 
 def _unwrap_decorated(node):
@@ -270,7 +321,9 @@ def extract_file(py_file: Path, root: Path) -> FileFacts | None:
     module_name = _extract_module_name(py_file, root)
     package = ".".join(module_name.split(".")[:-1]) if "." in module_name else ""
     rel_path = str(py_file.relative_to(root))
-    file_imports = _extract_imports(root_node)
+    file_imports = _resolve_relative_imports(
+        _extract_imports(root_node), module_name, py_file.name == "__init__.py"
+    )
 
     classes = _extract_classes(root_node)
     functions = _extract_functions(root_node)
@@ -341,9 +394,10 @@ def link(facts: list[FileFacts]) -> DependencyGraph:
         for imp_info in module_imports.get(fqn, []):
             module = imp_info["module"]
             names = imp_info["names"]
+            aliases = imp_info.get("aliases", {})
             if names:
                 for name in names:
-                    if refs and name not in refs:
+                    if refs and aliases.get(name, name) not in refs:
                         continue
                     target = f"{module}.{name}"
                     if target in entities:

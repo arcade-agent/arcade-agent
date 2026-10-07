@@ -112,3 +112,28 @@ def test_java_parser_ignores_javadoc_only_and_unused_imports(tmp_path):
     # Method entities only carry imports their own body references.
     assert graph.entities["p.a.Pool.uses"].imports == ["p.b.Real", "p.b.util"]
     assert graph.entities["p.a.Pool.idle"].imports == ["p.b.util"]
+
+
+def test_java_parser_links_same_package_references(tmp_path):
+    from arcade_agent.parsers.java import JavaParser
+
+    pkg = tmp_path / "com" / "x"
+    pkg.mkdir(parents=True)
+    a = pkg / "A.java"
+    a.write_text("package com.x;\npublic class A {\n  public int v() { return 1; }\n}\n")
+    b = pkg / "B.java"
+    b.write_text(
+        "package com.x;\n"
+        "public class B {\n"
+        "  private final A a = new A();\n"
+        "  public int w() { return a.v(); }\n"
+        "  public B self() { return this; }\n"
+        "}\n"
+    )
+
+    edges = JavaParser().parse([a, b], tmp_path).to_edge_tuples()
+
+    assert ("com.x.B", "com.x.A", "uses") in edges
+    # No self-edges, and nothing pointing at the owning class from its methods.
+    assert not any(src == dst for src, dst, _ in edges)
+    assert ("com.x.B.self", "com.x.B", "uses") not in edges
