@@ -5,32 +5,51 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## 0.4.0 — 2026-10-07
+
+Recovered architectures change for many projects in this release: parsing now
+finds Python relative imports and Java same-package references, and `pkg`
+recovery no longer splits root packages into one component per member. Expect
+a one-time jump in drift reports against a 0.3.0 baseline; re-baseline after
+upgrading.
 
 ### Added
 
-- Architecture guardrail, moved into the package from the
-  `arcade-analyze-skill` plugin: `algorithms/conformance.py` (the engine),
+- Architecture guardrail (#56): `algorithms/conformance.py` (the engine),
   `tools/guard.py` (`init_spec`, `propose_placement`, `preview_impact`,
-  `check_architecture`, `remediate`), the same five as MCP tools, and an
-  `arcade-guard` console script for pre-commit and CI gating.
+  `check_architecture`, `remediate`), the same five as MCP tools (24 in total),
+  and an `arcade-guard` console script for pre-commit and CI gating (exit 1 on
+  FAIL). Moved from the `arcade-analyze-skill` plugin, fixing on the way:
+  brace globs that never matched (the `layered`/`clean` templates mapped no
+  files), `preview` and `check` disagreeing on glob-valued `forbid` rules,
+  `**/api/**` matching `rapid/`, substring-based placement, and stdout writes
+  on the MCP stdio channel.
 
-### Fixed (relative to the plugin's guard scripts)
+### Changed
 
-- Brace globs such as `**/{api,web}/**` now match; the `layered` and `clean`
-  templates previously matched no files.
-- `preview_impact` and `check_architecture` share one rule function, so a
-  glob-valued `forbid` rule can no longer be allowed by one and failed by the
-  other.
-- `**/api/**` no longer matches `rapid/` or `api_old/`.
-- `propose_placement` lists as allowed exactly the dependencies `preview_impact`
-  allows (it previously listed only explicit `allow` rules), and ranks by
-  whole-word matches plus a per-layer role
-  vocabulary and optional per-component `keywords`, instead of substring tests.
-- The `max_new_smells` budget is reported as not evaluated when no baseline
-  smell count is available, instead of being skipped silently.
-- The MCP tools write nothing to stdout, which on the stdio transport is the
-  protocol channel.
+- `compare` reports "component-match similarity" and no longer calls it A2A:
+  it is a mean Jaccard over a one-to-one matching, not the a2a metric of
+  Behnamghader et al. `compute_a2a_similarity` remains as an alias of
+  `compute_matched_similarity`; the `a2a_result` payload key is unchanged (#61).
+
+### Fixed
+
+- Python: relative imports (`from .x import Y`) and aliased imports
+  (`import Y as Z`) produce edges; previously they produced none, which also
+  let relative imports slip past the guardrail (#59).
+- Java: references to types in the same package produce `uses` edges; Java
+  needs no import for them, so they were missing (#59).
+- `pkg` recovery groups root-package entities with their package (JVM) or
+  module (other languages) instead of one component per class or member:
+  Disruptor 294 -> 3 components, Caffeine 733 -> 2, click 509 -> 15 (#58).
+- Unused and Javadoc-only Java imports no longer create edges (#52).
+- `find_relevant` and `context_for_task` ignore stopwords and generic task
+  verbs in queries (#57).
+- `recover(algorithm="arc"|"limbo")` without the `claude` CLI raises
+  `LLMUnavailableError` naming the alternatives instead of `FileNotFoundError`;
+  the ARC reference is corrected to Garcia et al., ASE 2011 (#61).
+- Parse caches are versioned, so results from the old extractors are not
+  reused.
 
 ## 0.3.0 — 2026-08-21
 
