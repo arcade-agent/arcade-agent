@@ -8,7 +8,7 @@ on:
 # Copy this file to .github/workflows/arcade-agent-analysis.yml in any repository
 # that should run arcade-agent architecture analysis.
 env:
-  ARCADE_AGENT_VERSION: "0.3.0"
+  ARCADE_AGENT_VERSION: "0.4.0"
   PYTHON_VERSION: "3.12"
   INSTALL_EXTRAS: "[languages]"
   SOURCE_PATH: "."

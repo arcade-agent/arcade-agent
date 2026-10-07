@@ -12,7 +12,7 @@ on:
         description: Released arcade-agent package version to install, or "source" to install the checked-out repository (self-dogfooding).
         required: false
         type: string
-        default: "0.3.0"
+        default: "0.4.0"
       install-extras:
         description: Extras string appended to the arcade-agent package install.
         required: false

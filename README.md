@@ -368,17 +368,17 @@ jobs:
       issues: write
       pull-requests: write
     steps:
-      - uses: arcade-agent/arcade-agent/actions/analyze@v0.3.0
+      - uses: arcade-agent/arcade-agent/actions/analyze@v0.4.0
         with:
-          arcade-agent-version: "0.3.0"
+          arcade-agent-version: "0.4.0"
 ```
 
 Common optional inputs:
 
 ```yaml
-      - uses: arcade-agent/arcade-agent/actions/analyze@v0.3.0
+      - uses: arcade-agent/arcade-agent/actions/analyze@v0.4.0
         with:
-          arcade-agent-version: "0.3.0"
+          arcade-agent-version: "0.4.0"
           source-path: "."
           language: ""
           exclude-tests: "true"
@@ -389,7 +389,7 @@ Common optional inputs:
 ```
 
 For reproducible CI, keep `arcade-agent-version` pinned to a released package
-version such as `"0.3.0"`. Avoid `latest` in shared CI because a new package
+version such as `"0.4.0"`. Avoid `latest` in shared CI because a new package
 release can change analyzer behavior without a workflow review.
 
 The action stores the baseline as a GitHub Actions artifact on
