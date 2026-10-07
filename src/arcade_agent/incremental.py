@@ -29,12 +29,18 @@ logger = logging.getLogger(__name__)
 
 _SKIP = {"__skip__": True}  # marker: this file contributes no entity
 
+# Bump when per-file extraction changes, so cached facts from an older
+# extractor are not reused for byte-identical files.
+_EXTRACT_VERSION = "2"
+
 
 def file_key(path: Path) -> str:
     """SHA-256 over the file's absolute path + content. Path is included because
     extraction (module name, package) depends on where the file lives, so two
     byte-identical files at different paths must not share a cache entry."""
     h = hashlib.sha256()
+    h.update(f"extract:{_EXTRACT_VERSION}".encode())
+    h.update(b"\0")
     h.update(str(path.resolve()).encode())
     h.update(b"\0")
     h.update(path.read_bytes())

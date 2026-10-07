@@ -8,13 +8,33 @@ from arcade_agent.algorithms.limbo import limbo
 from arcade_agent.parsers.graph import DependencyGraph
 from arcade_agent.tools.registry import tool
 
+_JVM_LANGUAGES = frozenset({"java", "kotlin"})
+
 
 def _build_package_groups(
     dep_graph: DependencyGraph,
     common: list[str],
     depth: int,
 ) -> dict[str, list[str]]:
-    """Assign entities to groups using package segments after the common prefix."""
+    """Assign entities to groups using package segments after the common prefix.
+
+    For an entity whose package *is* the common prefix, the FQN decides:
+
+    - A package-level entity such as a Python ``__init__`` module names a
+      sub-package (FQN ``arcade_agent.algorithms``) and joins that group.
+    - In JVM languages the next FQN segment is a type and the rest are members
+      (``com.lmax.disruptor.Sequencer.next``), so the entity joins the root
+      package's group; grouping by FQN would yield one component per class or
+      even per method.
+    - Elsewhere the next segment is a module (``arcade_agent.budget``), which is
+      a meaningful unit, so the module becomes the group. Deeper FQN segments
+      are members and are never used.
+    """
+    sub_packages = {
+        tuple(parts[len(common):][:depth])
+        for parts in (e.package.split(".") for e in dep_graph.entities.values() if e.package)
+        if len(parts) > len(common)
+    }
     groups: dict[str, list[str]] = {}
     for fqn, entity in dep_graph.entities.items():
         if not entity.package:
@@ -25,12 +45,11 @@ def _build_package_groups(
         if remainder:
             key = ".".join(remainder[:depth])
         else:
-            # Package equals common prefix — use FQN to find the right group.
-            # e.g. FQN "arcade_agent.algorithms" -> key "algorithms"
-            fqn_parts = fqn.split(".")
-            fqn_remainder = fqn_parts[len(common):]
-            if fqn_remainder:
-                key = ".".join(fqn_remainder[:depth])
+            fqn_remainder = tuple(fqn.split(".")[len(common):][:depth])
+            if fqn_remainder in sub_packages:
+                key = ".".join(fqn_remainder)
+            elif fqn_remainder and entity.language not in _JVM_LANGUAGES:
+                key = fqn_remainder[0]
             else:
                 key = parts[-1] if parts[0] else "(default)"
         groups.setdefault(key, []).append(fqn)

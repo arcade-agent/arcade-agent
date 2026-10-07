@@ -1,13 +1,13 @@
 # arcade-agent
 
-[![CI](https://github.com/lemduc/arcade-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/lemduc/arcade-agent/actions/workflows/ci.yml)
+[![CI](https://github.com/arcade-agent/arcade-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/arcade-agent/arcade-agent/actions/workflows/ci.yml)
 [![PyPI version](https://img.shields.io/pypi/v/arcade-agent)](https://pypi.org/project/arcade-agent/)
 [![Python versions](https://img.shields.io/pypi/pyversions/arcade-agent)](https://pypi.org/project/arcade-agent/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![MCP compatible](https://img.shields.io/badge/MCP-compatible-blue)](https://modelcontextprotocol.io/)
-[![GitHub stars](https://img.shields.io/github/stars/lemduc/arcade-agent?style=social)](https://github.com/lemduc/arcade-agent/stargazers)
+[![GitHub stars](https://img.shields.io/github/stars/arcade-agent/arcade-agent?style=social)](https://github.com/arcade-agent/arcade-agent/stargazers)
 
-19 MCP tools · 4 task-shaped context tools · one git-versioned baseline · one pip install
+24 MCP tools · 4 task-shaped context tools · one git-versioned baseline · one pip install
 
 Docs: https://arcade-agent.dev
 
@@ -18,9 +18,9 @@ Provides composable tools for parsing source code, recovering architecture, dete
 ## Install
 
 ```bash
-pip install -e ".[dev]"
+pip install "arcade-agent[mcp,languages]"   # library, MCP server, all parsers
 
-# With MCP and all optional language parsers (for polyglot AI agent integration)
+# From a checkout, for development
 pip install -e ".[mcp,languages,dev]"
 ```
 
@@ -74,7 +74,7 @@ print(len(result.architecture.components), len(result.smells))
 | `recover` | Recover architecture (PKG, WCA, ACDC, ARC, LIMBO) |
 | `detect_smells` | Find dependency cycles, concern overload, scattered functionality, link overload (heuristic or LLM-powered) |
 | `compute_metrics` | Calculate RCI, TurboMQ, connectivity metrics |
-| `compare` | A2A architecture comparison across versions |
+| `compare` | Component-match comparison across versions (Jaccard over a one-to-one matching; not the published a2a) |
 | `changelog_architecture` | Architectural changelog between two versions: components added/removed/renamed/rewritten/split/merged, entities that changed component, smell and metric deltas |
 | `visualize` | Generate HTML reports, DOT, Mermaid, JSON, RSF |
 | `query` | Explore recovered architecture interactively |
@@ -85,8 +85,13 @@ print(len(result.architecture.components), len(result.smells))
 | `diff_impact` | Map changed files to affected components, downstream dependents, and broken contracts |
 | `dependency_cone` | Upstream/downstream dependency cone of an entity or file, with depth control |
 | `context_for_task` | Rank the minimal set of files to read for a natural-language task |
+| `init_spec` | Scaffold an `architecture.spec.json` (layered, hexagonal, clean, mvc) |
+| `propose_placement` | Before writing code: which component new code belongs in and what it may depend on |
+| `preview_impact` | Before adding an import: would a component dependency be allowed? |
+| `check_architecture` | After a change: PASS/WARN/FAIL against the spec, each violation with a fix |
+| `remediate` | Ranked fixes that restore conformance |
 
-Plus two session helpers — `get_full_result` and `list_sessions` — for a total of 19 MCP tools.
+Plus two session helpers — `get_full_result` and `list_sessions` — for a total of 24 MCP tools.
 
 ## Balanced Architecture Score
 
@@ -171,7 +176,7 @@ python examples/basic_analysis.py arcade_core --language java
 
 Results (v1.2.0): 170 entities, 470 edges, 13 components recovered, 7 architectural smells detected (including a 7-component dependency cycle and concern overload in the Clustering module).
 
-See [`examples/arcade_core_report.html`](https://lemduc.github.io/arcade-agent/examples/arcade_core_report.html) for the full interactive report.
+See [`examples/arcade_core_report.html`](https://arcade-agent.github.io/arcade-agent/examples/arcade_core_report.html) for the full interactive report.
 
 ### Algorithm Comparison
 
@@ -181,7 +186,7 @@ Compare PKG, ACDC, ARC, and LIMBO recovery algorithms side-by-side on the same p
 python examples/compare_algorithms.py arcade_core --language java --use-llm
 ```
 
-See [`examples/comparison_report.html`](https://lemduc.github.io/arcade-agent/examples/comparison_report.html) for the full comparison report.
+See [`examples/comparison_report.html`](https://arcade-agent.github.io/arcade-agent/examples/comparison_report.html) for the full comparison report.
 
 ## MCP Server (AI Agent Integration)
 
@@ -291,6 +296,47 @@ both entities are kept — the later one re-keyed as `<fqn>#<language>` — and 
 counts appear in the graph's `metadata` (`fqn_collisions`,
 `fqn_collisions_cross_family`, …), so nothing is silently dropped.
 
+## Architecture Guardrail
+
+The guardrail checks code against an architecture you write down, while the
+code is being written. The contract is an `architecture.spec.json` that maps
+path globs to components and layers and lists allowed and forbidden
+dependencies:
+
+```json
+{
+  "components": [
+    {"name": "api",     "match": "**/api/**",     "layer": "presentation"},
+    {"name": "service", "match": "**/service/**", "layer": "application"},
+    {"name": "store",   "match": "**/store/**",   "layer": "infrastructure"}
+  ],
+  "layers": ["presentation", "application", "domain", "infrastructure"],
+  "allow":  [{"from": "presentation", "to": "application"},
+             {"from": "application",  "to": "infrastructure"}],
+  "forbid": [{"from": "presentation", "to": "infrastructure",
+              "why": "the API goes through the service layer"}],
+  "budgets": {"no_cycles": true, "max_fan_in": 8}
+}
+```
+
+An agent calls `propose_placement` before writing new code, `preview_impact`
+before a cross-component import, and `check_architecture` afterwards. The same
+checks run from the command line, so a pre-commit hook or CI job can block a
+violating change:
+
+```bash
+arcade-guard init . --template layered
+arcade-guard propose . --intent "an endpoint that lists orders"
+arcade-guard preview . --from api --to store     # WOULD VIOLATE
+arcade-guard check . --fail-on error             # exit 1 on FAIL
+```
+
+Verdicts are deterministic: entities are assigned to components by path, not by
+clustering, and `preview_impact` and `check_architecture` evaluate the same
+rule function, so they cannot disagree. Conformance is computed over
+*referenced* dependencies: an import that is never used, or used only in a type
+annotation, does not count as an edge.
+
 ## LLM-Powered Analysis
 
 Pass `--use-llm` to enable Claude-powered concern detection. Requires the `claude` CLI installed and authenticated.
@@ -305,7 +351,7 @@ This replaces heuristic smell detection (entity count thresholds, suffix matchin
 
 arcade-agent ships a GitHub Action that detects architecture drift on every PR
 — like SonarQube for architecture. Consumer repositories add a short workflow
-that calls `lemduc/arcade-agent/actions/analyze`, and the action runs released
+that calls `arcade-agent/arcade-agent/actions/analyze`, and the action runs released
 arcade-agent tooling from PyPI without checking out this repository's live
 source.
 
@@ -336,17 +382,17 @@ jobs:
       issues: write
       pull-requests: write
     steps:
-      - uses: lemduc/arcade-agent/actions/analyze@v0.3.0
+      - uses: arcade-agent/arcade-agent/actions/analyze@v0.4.0
         with:
-          arcade-agent-version: "0.3.0"
+          arcade-agent-version: "0.4.0"
 ```
 
 Common optional inputs:
 
 ```yaml
-      - uses: lemduc/arcade-agent/actions/analyze@v0.3.0
+      - uses: arcade-agent/arcade-agent/actions/analyze@v0.4.0
         with:
-          arcade-agent-version: "0.3.0"
+          arcade-agent-version: "0.4.0"
           source-path: "."
           language: ""
           exclude-tests: "true"
@@ -357,7 +403,7 @@ Common optional inputs:
 ```
 
 For reproducible CI, keep `arcade-agent-version` pinned to a released package
-version such as `"0.3.0"`. Avoid `latest` in shared CI because a new package
+version such as `"0.4.0"`. Avoid `latest` in shared CI because a new package
 release can change analyzer behavior without a workflow review.
 
 The action stores the baseline as a GitHub Actions artifact on
@@ -404,7 +450,7 @@ arcade-agent ports and extends the capabilities of the original [ARCADE](https:/
 | 4 smell types (BDC, BCO, SPF, BUO) | Done | Heuristic + LLM-powered detection |
 | 6 quality metrics | Done | RCI, TurboMQ, BasicMQ, IntraConnectivity, InterConnectivity, TwoWayPairRatio |
 | Balanced architecture score | Done | Derived reporting score combining core metrics, principle signals, and smell burden |
-| A2A architecture comparison | Done | Hungarian algorithm on Jaccard similarity |
+| Component-match comparison | Done | Hungarian algorithm on Jaccard similarity (the published a2a, based on transform operations, is not implemented) |
 | Multi-language parsing | Done | Java, Python, C/C++, TypeScript/JavaScript, Go (full); Kotlin, Rust (structural); polyglot merge+relink via `languages=[...]` / `language="multi"` (cross-language edges within the JVM family only) |
 | 5 export formats | Done | HTML, DOT, JSON, RSF, Mermaid |
 | LLM concern extraction | Done | Claude CLI for semantic BCO/SPF detection |
