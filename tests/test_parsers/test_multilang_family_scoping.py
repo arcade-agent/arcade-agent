@@ -296,6 +296,30 @@ def test_merge_qualifies_conflicting_dependency_resolution_without_mutating_inpu
     assert [graph_to_dict(graph) for graph in graphs] == before
 
 
+def test_merge_reports_a_language_conflict_only_once():
+    def graph(name, summary):
+        return DependencyGraph(
+            entities={name: _entity(name, "typescript")},
+            metadata={"dependency_resolution": {"typescript": summary}},
+        )
+
+    first = {"resolved_local": 1, "metrics_qualified": False}
+    other = {"resolved_local": 2, "metrics_qualified": True}
+    merged = merge_and_relink(
+        graph("web.App", first),
+        graph("web.Service", other),
+        graph("web.Other", deepcopy(first)),
+    )
+
+    summary = merged.metadata["dependency_resolution"]["typescript"]
+    assert summary["resolved_local"] == 1
+    assert summary["metrics_qualified"] is True
+    conflicts = [
+        error for error in summary["configuration_errors"] if "Conflicting" in error
+    ]
+    assert len(conflicts) == 1
+
+
 def test_merge_deduplicates_equal_dependency_resolution_summaries():
     resolution = {
         "resolved_local": 1,

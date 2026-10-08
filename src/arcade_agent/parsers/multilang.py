@@ -228,6 +228,7 @@ def _dependency_resolution_metadata(
 ) -> dict[str, dict[str, Any]]:
     """Preserve language-keyed parser resolution metadata across graph union."""
     by_language: dict[str, Any] = {}
+    conflicted_languages: set[str] = set()
     for graph in graphs:
         raw = graph.metadata.get("dependency_resolution")
         if not isinstance(raw, dict):
@@ -236,12 +237,13 @@ def _dependency_resolution_metadata(
             if not isinstance(language, str) or not isinstance(summary, dict):
                 continue
             if language in by_language and by_language[language] != summary:
-                logger.warning(
-                    "Conflicting dependency-resolution metadata for %s; keeping first",
-                    language,
-                )
                 kept = by_language[language]
-                if isinstance(kept, dict):
+                if isinstance(kept, dict) and language not in conflicted_languages:
+                    conflicted_languages.add(language)
+                    logger.warning(
+                        "Conflicting dependency-resolution metadata for %s; keeping first",
+                        language,
+                    )
                     kept = dict(kept)
                     errors = kept.get("configuration_errors")
                     kept["configuration_errors"] = [

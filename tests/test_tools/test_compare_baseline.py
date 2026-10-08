@@ -128,6 +128,18 @@ def test_complete_snapshots_do_not_show_qualification_warning(tmp_path):
     assert "Qualified dependency-graph metrics" not in output.read_text()
 
 
+def test_delta_note_when_only_one_side_is_qualified(tmp_path):
+    qualified = {"status": "qualified", "dependency_resolution": {}}
+    baseline = _snapshot("abc1234", "Core", 1, 2)
+    baseline["graph_quality"] = qualified
+    current = _snapshot("def5678", "Core", 1, 2)
+
+    assert "different resolution quality" in build_comment(current, baseline)
+
+    current["graph_quality"] = qualified
+    assert "different resolution quality" not in build_comment(current, baseline)
+
+
 def test_export_evolution_html_writes_report(tmp_path: Path):
     baseline = _snapshot("abc1234", "Core", 1, 1)
     current = _snapshot("def5678", "Core", 1, 2)

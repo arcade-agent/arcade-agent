@@ -6,6 +6,7 @@ from arcade_agent.algorithms.coupling import (
     compute_basic_mq,
     compute_rci,
     compute_turbo_mq,
+    graph_quality_context,
 )
 from arcade_agent.algorithms.smells import SmellInstance
 
@@ -100,6 +101,22 @@ def test_metrics_visibly_qualify_incomplete_dependency_resolution(
             "configuration_error_count": 0,
             "metrics_qualified": True,
         }
+
+
+def test_graph_quality_context_counts_truncated_configuration_errors(sample_graph):
+    sample_graph.metadata["dependency_resolution"] = {
+        "typescript": {
+            "import_specifiers": 1,
+            "configuration_errors": ["first", "second"],
+            "configuration_errors_truncated": 3,
+            "metrics_qualified": True,
+        }
+    }
+
+    quality = graph_quality_context(sample_graph)
+
+    summary = quality["dependency_resolution"]["typescript"]
+    assert summary["configuration_error_count"] == 5
 
 
 def test_balanced_scores_are_bounded(sample_architecture, sample_graph):
