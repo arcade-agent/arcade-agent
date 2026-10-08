@@ -433,15 +433,18 @@ Their dashboards show structural analysis findings that need interpretation in
 light of parser coverage and source references. Snapshot counts checked on
 2026-09-29 are shown below; live badges may change.
 
-| Project | Components | Detected smells | Investigation | Live report |
-| --- | ---: | ---: | --- | --- |
-| **parallel-collectors** | 97 | 0 | Reference snapshot; zero findings is not coverage proof | [Report](https://arcade-agent.github.io/parallel-collectors/) |
-| **LMAX Disruptor** | 294 | 5 | Core/DSL package dependency through a public enum | [Report](https://arcade-agent.github.io/disruptor/) |
-| **HikariCP** | 10 | 7 | Documentation import attribution in pool/datasource edges | [Report](https://arcade-agent.github.io/HikariCP/) |
-| **Caffeine** | 766 | 4 | Documentation references in cache/statistics types | [Report](https://arcade-agent.github.io/caffeine/) |
-| **Dataverse** | 189 | 86 | Large structural cycle candidate requiring source review | [Report](https://arcade-agent.github.io/dataverse/) |
+| Project | Components (0.3.0) | Detected smells (0.3.0) | Components (after #52/#58/#59) | Detected smells (after #52/#58/#59) | Investigation | Live report |
+| --- | ---: | ---: | ---: | ---: | --- | --- |
+| **parallel-collectors** | 97 | 0 | 1 | 0 | Reference snapshot; zero findings is not coverage proof | [Report](https://arcade-agent.github.io/parallel-collectors/) |
+| **LMAX Disruptor** | 294 | 5 | 3 | 2 | Core/DSL package dependency through a public enum | [Report](https://arcade-agent.github.io/disruptor/) |
+| **HikariCP** | 10 | 7 | 5 | 4 | Pool/root-package cycle through config and MXBean types | [Report](https://arcade-agent.github.io/HikariCP/) |
+| **Caffeine** | 766 | 4 | 2 | 1 | cache/stats cycle through `RemovalCause` in stats signatures | [Report](https://arcade-agent.github.io/caffeine/) |
+| **Dataverse** | 189 | 86 | 48 | 29 | Large structural cycle candidate requiring source review | [Report](https://arcade-agent.github.io/dataverse/) |
 
-Read the [Java case studies](docs/case-studies/java-speed-demons.md) for pinned
+The 0.3.0 columns are what the reviewed runs installed
+(`arcade-agent[languages]==0.3.0`); the post-fix columns are @lemduc's
+2026-10-07 re-run and describe the analyzer on current `main`. Read the
+[Java case studies](docs/case-studies/java-structural-case-studies.md) for pinned
 source commits, successful analysis runs, scope and limitations. These reports
 do not establish call-graph completeness or a controlled speed benchmark.
 
