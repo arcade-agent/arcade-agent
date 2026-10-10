@@ -398,6 +398,10 @@ def _extract_file(path: Path, root: Path, parser: Parser) -> _ExtractedFile | No
     imports += tuple(_Import(item.source, item.names, (), None) for item in reexports)
     import_sources = [item.source for item in imports]
     declarations: list[_Declaration] = []
+    # Top-level non-function bindings (`const svc = { … }`, `new Repo()`), with
+    # whether they are exported in place. They are not entities; an import of
+    # one links to the entity standing in for this module (#72).
+    module_values: dict[str, bool] = {}
 
     for top_level in root_node.children:
         node = _unwrap_export(top_level)
@@ -472,6 +476,17 @@ def _extract_file(path: Path, root: Path, parser: Parser) -> _ExtractedFile | No
                     _Declaration(function_name, "function", None, (), declaration_node,
                                  exported=exported)
                 )
+            else:
+                for declarator in node.named_children:
+                    if declarator.type != "variable_declarator":
+                        continue
+                    name_node = declarator.child_by_field_name("name")
+                    value = declarator.child_by_field_name("value")
+                    if value is not None and value.type == "member_expression":
+                        value = value.child_by_field_name("object")
+                    if (name_node is not None and name_node.type == "identifier"
+                            and _require_source(value) is None):
+                        module_values[_get_text(name_node)] = exported
 
     entities: dict[str, Entity] = {}
     references: dict[str, set[str]] = {}
@@ -516,6 +531,15 @@ def _extract_file(path: Path, root: Path, parser: Parser) -> _ExtractedFile | No
             if declaration.exported and not declaration.default_export:
                 exports[declaration.name] = fqn
 
+    representative = module if module in entities else next(
+        iter(sorted(fqn for fqn, entity in entities.items() if entity.kind != "method")),
+        None,
+    )
+    if representative is not None:
+        for name, exported in module_values.items():
+            if exported:
+                exports.setdefault(name, representative)
+
     for statement in root_node.children:
         if statement.type != "export_statement" or statement.child_by_field_name("source"):
             continue
@@ -524,6 +548,8 @@ def _extract_file(path: Path, root: Path, parser: Parser) -> _ExtractedFile | No
             fqn = f"{module}.{_get_text(value)}" if module else _get_text(value)
             if fqn in entities:
                 exports["default"] = fqn
+            elif _get_text(value) in module_values and representative is not None:
+                exports["default"] = representative
         for clause in statement.children:
             if clause.type != "export_clause":
                 continue
@@ -536,6 +562,8 @@ def _extract_file(path: Path, root: Path, parser: Parser) -> _ExtractedFile | No
                 fqn = f"{module}.{local}" if module else local
                 if fqn in entities:
                     exports[name] = fqn
+                elif local in module_values and representative is not None:
+                    exports[name] = representative
                 else:
                     for imported in imports:
                         for original, binding in imported.names:
@@ -549,6 +577,9 @@ def _extract_file(path: Path, root: Path, parser: Parser) -> _ExtractedFile | No
         fqn = f"{module}.{local}" if module else local
         if fqn in entities:
             exports.setdefault(name, fqn)
+            continue
+        if local in module_values and representative is not None:
+            exports.setdefault(name, representative)
             continue
         for imported in imports:
             for original, binding in imported.names:
