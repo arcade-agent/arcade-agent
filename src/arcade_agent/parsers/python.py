@@ -365,6 +365,55 @@ def extract_file(py_file: Path, root: Path) -> FileFacts | None:
                      file_imports=file_imports, refs=refs_map)
 
 
+def _module_of(rel_path: str) -> str:
+    """Module name for a parse-root-relative ``.py`` path, as in extraction."""
+    parts = list(Path(rel_path).parts)
+    parts[-1] = parts[-1].removesuffix(".py")
+    if parts[-1] == "__init__":
+        parts = parts[:-1]
+    return ".".join(parts)
+
+
+def _resolve_superclass(
+    entity: Entity,
+    imports: list[dict],
+    entities: dict[str, Entity],
+    resolve,
+) -> str | None:
+    """Resolve a base class the way Python binds it: same module, then imports.
+
+    Args:
+        entity: The subclass.
+        imports: Resolved imports of the subclass's file.
+        entities: All parsed entities.
+        resolve: ``(module, name) -> fqn | None`` for ``from module import name``.
+
+    Returns:
+        The base class's FQN, or None when it is external or unresolved.
+    """
+    base = entity.superclass or ""
+    head, _, rest = base.partition(".")
+    module = entity.fqn.rsplit(".", 1)[0] if "." in entity.fqn else ""
+    local = f"{module}.{base}" if module else base
+    if local in entities:
+        return local
+    for imp in imports:
+        for name in imp["names"]:
+            if imp.get("aliases", {}).get(name, name) == head:
+                target = resolve(imp["module"], name)
+                if target is None:
+                    continue
+                if not rest:
+                    return target
+                dotted = f"{target}.{rest}"
+                return dotted if dotted in entities else None
+        if not imp["names"] and imp["module"].split(".")[-1] == head and rest:
+            dotted = f"{imp['module']}.{rest}"
+            if dotted in entities:
+                return dotted
+    return None
+
+
 def link(facts: list[FileFacts]) -> DependencyGraph:
     """Pass 2: build the dependency graph from per-file facts.
 
@@ -384,14 +433,61 @@ def link(facts: list[FileFacts]) -> DependencyGraph:
             module_imports[fqn] = ff.file_imports
             entity_refs[fqn] = ff.refs.get(fqn, set())
 
-    fqn_index: dict[str, str] = {}
+    # Short names of importable (non-method) entities, for package re-exports.
+    by_name: dict[str, list[str]] = {}
     for entity in entities.values():
-        fqn_index[entity.name] = entity.fqn
+        if entity.kind != "method":
+            by_name.setdefault(entity.name, []).append(entity.fqn)
+
+    # Each parsed module's own imports, for following re-exports.
+    imports_by_module: dict[str, list[dict]] = {}
+    for ff in facts:
+        imports_by_module[_module_of(ff.rel_path)] = ff.file_imports
+
+    def canonical(module: str) -> str:
+        """Map an imported module to its parsed name under a nested source root.
+
+        With a ``src/`` layout, ``src/app/x.py`` is parsed as ``src.app.x`` but
+        imported as ``app.x``; a unique parsed module ending in the imported
+        name is that module.
+        """
+        if module in imports_by_module:
+            return module
+        suffix = f".{module}"
+        matches = [m for m in imports_by_module if m.endswith(suffix)]
+        return matches[0] if len(matches) == 1 else module
+
+    def resolve(module: str, name: str, seen: frozenset[str] = frozenset()) -> str | None:
+        """Resolve ``from module import name`` to a parsed entity.
+
+        A name not defined in ``module`` itself may be re-exported: by the
+        module's own ``from other import name`` (a compatibility shim), or by
+        its package (``from app.models import User`` with ``User`` in
+        ``app/models/user.py``, where an import-only ``__init__`` is not
+        parsed), looked up inside the module's subtree and only when unique. A
+        name from an external or unrelated module never resolves by short name
+        alone (#66).
+        """
+        module = canonical(module)
+        target = f"{module}.{name}"
+        if target in entities:
+            return target
+        if module not in seen:
+            for imp in imports_by_module.get(module, ()):
+                for original in imp["names"]:
+                    if imp.get("aliases", {}).get(original, original) == name:
+                        found = resolve(imp["module"], original, seen | {module})
+                        if found is not None:
+                            return found
+        prefix = f"{module}."
+        matches = [f for f in by_name.get(name, ()) if f.startswith(prefix)]
+        return matches[0] if len(matches) == 1 else None
 
     edges: list[Edge] = []
     for fqn, entity in entities.items():
         refs = entity_refs.get(fqn, set())
-        for imp_info in module_imports.get(fqn, []):
+        imports = module_imports.get(fqn, [])
+        for imp_info in imports:
             module = imp_info["module"]
             names = imp_info["names"]
             aliases = imp_info.get("aliases", {})
@@ -399,18 +495,18 @@ def link(facts: list[FileFacts]) -> DependencyGraph:
                 for name in names:
                     if refs and aliases.get(name, name) not in refs:
                         continue
-                    target = f"{module}.{name}"
-                    if target in entities:
+                    target = resolve(module, name)
+                    if target is not None:
                         edges.append(Edge(source=fqn, target=target, relation="import"))
-                    elif name in fqn_index:
-                        edges.append(Edge(source=fqn, target=fqn_index[name], relation="import"))
             else:
                 if refs and module.split(".")[-1] not in refs:
                     continue
                 if module in entities:
                     edges.append(Edge(source=fqn, target=module, relation="import"))
-        if entity.superclass and entity.superclass in fqn_index:
-            edges.append(Edge(source=fqn, target=fqn_index[entity.superclass], relation="extends"))
+        if entity.superclass:
+            target = _resolve_superclass(entity, imports, entities, resolve)
+            if target is not None:
+                edges.append(Edge(source=fqn, target=target, relation="extends"))
 
     seen: set[tuple[str, str, str]] = set()
     unique_edges: list[Edge] = []
