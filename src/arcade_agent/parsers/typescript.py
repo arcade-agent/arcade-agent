@@ -237,6 +237,125 @@ def _extract_imports(root_node: Node) -> tuple[_Import, ...]:
     return tuple(imports)
 
 
+def _require_source(node: Node | None) -> str | None:
+    """The module specifier of a ``require('…')`` call, else None."""
+    if node is None or node.type != "call_expression":
+        return None
+    function = node.child_by_field_name("function")
+    if function is None or function.type != "identifier" or _get_text(function) != "require":
+        return None
+    arguments = node.child_by_field_name("arguments")
+    values = arguments.named_children if arguments is not None else []
+    if len(values) != 1 or values[0].type != "string":
+        return None
+    fragment = next((part for part in values[0].children if part.type == "string_fragment"), None)
+    return _get_text(fragment) if fragment is not None else None
+
+
+def _extract_requires(root_node: Node) -> tuple[_Import, ...]:
+    """Extract CommonJS ``require`` calls as imports (#68).
+
+    ``const x = require(s)`` binds ``x`` as both the default export and a
+    namespace (``x.member``); ``const { a, b: c } = require(s)`` and
+    ``const c = require(s).b`` are named imports; any other ``require(s)`` is
+    a side-effect import.
+    """
+    imports: list[_Import] = []
+    stack = [root_node]
+    while stack:
+        node = stack.pop()
+        stack.extend(node.children)
+        source = _require_source(node)
+        if not source or not is_source_import(source):
+            continue
+        names: tuple[tuple[str, str], ...] = ()
+        namespaces: tuple[str, ...] = ()
+        default: str | None = None
+        parent = node.parent
+        if parent is not None and parent.type == "member_expression":
+            declarator = parent.parent
+            target = (declarator.child_by_field_name("name")
+                      if declarator is not None and declarator.type == "variable_declarator"
+                      else None)
+            member = parent.child_by_field_name("property")
+            if target is not None and target.type == "identifier" and member is not None:
+                names = ((_get_text(member), _get_text(target)),)
+        elif parent is not None and parent.type == "variable_declarator":
+            target = parent.child_by_field_name("name")
+            if target is not None and target.type == "identifier":
+                default = _get_text(target)
+                namespaces = (default,)
+            elif target is not None and target.type == "object_pattern":
+                pairs: list[tuple[str, str]] = []
+                for item in target.named_children:
+                    if item.type == "shorthand_property_identifier_pattern":
+                        pairs.append((_get_text(item), _get_text(item)))
+                    elif item.type == "pair_pattern":
+                        key = item.child_by_field_name("key")
+                        value = item.child_by_field_name("value")
+                        if key is not None and value is not None and value.type == "identifier":
+                            pairs.append((_get_text(key), _get_text(value)))
+                names = tuple(pairs)
+        imports.append(_Import(source, names, namespaces, default))
+    return tuple(imports)
+
+
+def _is_module_exports(node: Node | None) -> bool:
+    return (
+        node is not None
+        and node.type == "member_expression"
+        and _get_text(node.child_by_field_name("object")) == "module"
+        and _get_text(node.child_by_field_name("property")) == "exports"
+    )
+
+
+def _extract_commonjs_exports(root_node: Node) -> tuple[list[tuple[str, str]], list[str]]:
+    """Top-level CommonJS exports as ``(exported name, local name)`` pairs.
+
+    ``module.exports = X`` exports ``X`` as the default; ``module.exports =
+    { a, b: c }``, ``exports.a = a`` and ``module.exports.a = a`` export names;
+    ``module.exports = require(s)`` re-exports ``s`` wholesale (second list).
+    """
+    named: list[tuple[str, str]] = []
+    wildcard_sources: list[str] = []
+    for statement in root_node.children:
+        if statement.type != "expression_statement":
+            continue
+        for expression in statement.named_children:
+            if expression.type != "assignment_expression":
+                continue
+            left = expression.child_by_field_name("left")
+            right = expression.child_by_field_name("right")
+            if left is None or right is None:
+                continue
+            if _is_module_exports(left):
+                if right.type == "identifier":
+                    named.append(("default", _get_text(right)))
+                elif right.type == "object":
+                    for prop in right.named_children:
+                        if prop.type == "shorthand_property_identifier":
+                            named.append((_get_text(prop), _get_text(prop)))
+                        elif prop.type == "pair":
+                            key = prop.child_by_field_name("key")
+                            value = prop.child_by_field_name("value")
+                            if key is not None and value is not None and value.type == "identifier":
+                                named.append((_get_text(key).strip("\"'"), _get_text(value)))
+                else:
+                    source = _require_source(right)
+                    if source and is_source_import(source):
+                        wildcard_sources.append(source)
+            elif left.type == "member_expression" and right.type == "identifier":
+                target = left.child_by_field_name("object")
+                member = left.child_by_field_name("property")
+                exports_object = _is_module_exports(target) or (
+                    target is not None and target.type == "identifier"
+                    and _get_text(target) == "exports"
+                )
+                if exports_object and member is not None:
+                    named.append((_get_text(member), _get_text(right)))
+    return named, wildcard_sources
+
+
 def _extract_reexports(root_node: Node) -> tuple[_ReExport, ...]:
     reexports = []
     for statement in root_node.children:
@@ -274,7 +393,7 @@ def _extract_file(path: Path, root: Path, parser: Parser) -> _ExtractedFile | No
     module = _module_name(path, root)
     package = ".".join(module.split(".")[:-1]) if "." in module else ""
     relative_path = str(path.relative_to(root))
-    imports = _extract_imports(root_node)
+    imports = _extract_imports(root_node) + _extract_requires(root_node)
     reexports = _extract_reexports(root_node)
     imports += tuple(_Import(item.source, item.names, (), None) for item in reexports)
     import_sources = [item.source for item in imports]
@@ -424,6 +543,21 @@ def _extract_file(path: Path, root: Path, parser: Parser) -> _ExtractedFile | No
                                 reexports += (_ReExport(imported.source, ((original, name),)),)
                         if imported.default == local:
                             reexports += (_ReExport(imported.source, (("default", name),)),)
+
+    commonjs_exports, commonjs_wildcards = _extract_commonjs_exports(root_node)
+    for name, local in commonjs_exports:
+        fqn = f"{module}.{local}" if module else local
+        if fqn in entities:
+            exports.setdefault(name, fqn)
+            continue
+        for imported in imports:
+            for original, binding in imported.names:
+                if binding == local:
+                    reexports += (_ReExport(imported.source, ((original, name),)),)
+            if imported.default == local:
+                reexports += (_ReExport(imported.source, (("default", name),)),)
+    for source in commonjs_wildcards:
+        reexports += (_ReExport(source, (("default", "default"),), wildcard=True),)
 
     return _ExtractedFile(
         path=path,
