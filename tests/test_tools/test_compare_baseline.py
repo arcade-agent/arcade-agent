@@ -3,7 +3,11 @@
 import importlib.util
 from pathlib import Path
 
-from arcade_agent.ci.compare_baseline import _component_map, _normalize_snapshot
+from arcade_agent.ci.compare_baseline import (
+    _component_map,
+    _normalize_snapshot,
+    _write_step_summary,
+)
 from arcade_agent.exporters.html import (
     build_snapshot_mermaid,
     export_evolution_html,
@@ -67,9 +71,89 @@ def test_build_report_payload_tracks_component_and_method_deltas():
     assert "+2" in report["component_rows"][0]["methods"]
 
 
+def test_comparison_comment_surfaces_qualified_graph_metrics():
+    current = _snapshot("def5678", "Core", 1, 2)
+    current["graph_quality"] = {
+        "status": "qualified",
+        "dependency_resolution": {
+            "typescript": {
+                "resolved_local": 12,
+                "unresolved_local": 3,
+                "linked_local": 9,
+                "unlinked_local": 3,
+            }
+        },
+    }
+
+    report = build_report_payload(current, None)
+    comment = build_comment(current, None)
+
+    assert report["graph_quality"] == current["graph_quality"]
+    assert "Qualified dependency-graph metrics" in comment
+    assert "`typescript`: 12 resolved / 3 unresolved; 9 linked / 3 unlinked." in comment
+
+
+def test_baseline_only_qualification_survives_comparison_reports(tmp_path):
+    baseline = _snapshot("abc1234", "Core", 1, 2)
+    baseline["graph_quality"] = {
+        "status": "qualified",
+        "dependency_resolution": {
+            "typescript": {"resolved_local": 1, "unresolved_local": 1},
+        },
+    }
+    current = _snapshot("def5678", "Core", 1, 2)
+    report = build_report_payload(current, baseline)
+
+    assert report["baseline_graph_quality"] == baseline["graph_quality"]
+    comment = build_comment(current, baseline)
+    summary_path = tmp_path / "summary.md"
+    _write_step_summary(summary_path, report)
+    html_path = tmp_path / "evolution.html"
+    export_evolution_html(report, html_path)
+
+    for content in (comment, summary_path.read_text(), html_path.read_text()):
+        assert "Baseline" in content
+        assert "Qualified dependency-graph metrics" in content
+        assert "1 unresolved" in content
+
+
+def test_complete_snapshots_do_not_show_qualification_warning(tmp_path):
+    baseline = _snapshot("abc1234", "Core", 1, 2)
+    current = _snapshot("def5678", "Core", 1, 2)
+    report = build_report_payload(current, baseline)
+    output = tmp_path / "evolution.html"
+    export_evolution_html(report, output)
+
+    assert "Qualified dependency-graph metrics" not in build_comment(current, baseline)
+    assert "Qualified dependency-graph metrics" not in output.read_text()
+
+
+def test_delta_note_when_only_one_side_is_qualified(tmp_path):
+    qualified = {"status": "qualified", "dependency_resolution": {}}
+    baseline = _snapshot("abc1234", "Core", 1, 2)
+    baseline["graph_quality"] = qualified
+    current = _snapshot("def5678", "Core", 1, 2)
+
+    assert "different resolution quality" in build_comment(current, baseline)
+
+    current["graph_quality"] = qualified
+    assert "different resolution quality" not in build_comment(current, baseline)
+
+
 def test_export_evolution_html_writes_report(tmp_path: Path):
     baseline = _snapshot("abc1234", "Core", 1, 1)
     current = _snapshot("def5678", "Core", 1, 2)
+    current["graph_quality"] = {
+        "status": "qualified",
+        "dependency_resolution": {
+            "typescript": {
+                "resolved_local": 4,
+                "unresolved_local": 1,
+                "linked_local": 3,
+                "unlinked_local": 1,
+            }
+        },
+    }
     report = build_report_payload(current, baseline)
 
     output = tmp_path / "comparison.html"
@@ -79,6 +163,8 @@ def test_export_evolution_html_writes_report(tmp_path: Path):
     assert "Architecture Evolution Report" in content
     assert "Core" in content
     assert "Methods" in content
+    assert "Qualified dependency-graph metrics" in content
+    assert "1 unresolved" in content
 
 
 def test_export_html_metrics_nav_uses_metric_groups(tmp_path: Path):

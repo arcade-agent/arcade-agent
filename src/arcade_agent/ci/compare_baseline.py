@@ -74,6 +74,60 @@ def _quality_label(rci: float) -> str:
     return "Poor"
 
 
+def _graph_quality_warning_lines(
+    snapshot: dict[str, object] | None, snapshot_name: str = "",
+) -> list[str]:
+    """Render stored dependency-resolution qualification as Markdown quotes."""
+    if not snapshot:
+        return []
+    quality = snapshot.get("graph_quality")
+    if not isinstance(quality, dict) or quality.get("status") != "qualified":
+        return []
+
+    label = f"{snapshot_name}: " if snapshot_name else ""
+    lines = [
+        f"> ⚠️ {label}**Qualified dependency-graph metrics:** discovered local-import coverage "
+        "is incomplete; treat scores as directional signals, not a complete architecture "
+        "assessment."
+    ]
+    resolution = quality.get("dependency_resolution")
+    if isinstance(resolution, dict):
+        for language, summary in sorted(resolution.items()):
+            if not isinstance(summary, dict):
+                continue
+            lines.append(
+                f"> `{language}`: {summary.get('resolved_local', 0)} resolved / "
+                f"{summary.get('unresolved_local', 0)} unresolved; "
+                f"{summary.get('linked_local', 0)} linked / "
+                f"{summary.get('unlinked_local', 0)} unlinked."
+            )
+            if summary.get("configuration_error_count"):
+                lines.append(
+                    f"> `{language}`: {summary['configuration_error_count']} configuration errors."
+                )
+    return lines
+
+
+def _graph_quality_delta_note(
+    baseline: dict[str, object] | None,
+    current: dict[str, object] | None,
+) -> str | None:
+    """Note when metric deltas compare graphs of different resolution quality."""
+
+    def _qualified(snapshot: dict[str, object] | None) -> bool:
+        if not snapshot:
+            return False
+        quality = snapshot.get("graph_quality")
+        return isinstance(quality, dict) and quality.get("status") == "qualified"
+
+    if _qualified(baseline) == _qualified(current):
+        return None
+    return (
+        "> ℹ️ Only one side of this comparison carries qualified dependency-graph metrics, "
+        "so the metric deltas below compare graphs of different resolution quality."
+    )
+
+
 def _numeric_delta(new: float, old: float) -> str:
     diff = new - old
     if abs(diff) < 0.0001:
@@ -672,6 +726,8 @@ def build_report_payload(
         "dependency_rows": _build_dependency_rows(current, baseline),
         "run_url": run_url,
         "baseline_note": baseline_note,
+        "graph_quality": current.get("graph_quality"),
+        "baseline_graph_quality": (baseline or {}).get("graph_quality"),
     }
 
 
@@ -707,6 +763,17 @@ def _write_step_summary(path: Path, report: dict) -> None:
         )
     else:
         lines.append("| Smells | None detected |")
+
+    quality_warning = [
+        *_graph_quality_warning_lines(baseline, "Baseline"),
+        *_graph_quality_warning_lines(current, "Current"),
+    ]
+    delta_note = _graph_quality_delta_note(baseline, current)
+    if delta_note:
+        quality_warning.append(delta_note)
+    if quality_warning:
+        lines.append("")
+        lines.extend(quality_warning)
 
     lines.append("\n## 🕸️ High-Level Design\n")
     lines.append("```mermaid")
@@ -845,6 +912,17 @@ def build_comment(
 
     if report.get("baseline_note"):
         lines.append(f"> {report['baseline_note']}\n")
+
+    quality_warning = [
+        *_graph_quality_warning_lines(baseline, "Baseline"),
+        *_graph_quality_warning_lines(current, "Current"),
+    ]
+    delta_note = _graph_quality_delta_note(baseline, current)
+    if delta_note:
+        quality_warning.append(delta_note)
+    if quality_warning:
+        lines.extend(quality_warning)
+        lines.append("")
 
     # -- Metric evolution quick view (top) -------------------------------------
     if baseline:

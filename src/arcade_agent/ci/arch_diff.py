@@ -15,9 +15,10 @@ from pathlib import Path
 from typing import Any
 
 from arcade_agent.algorithms.architecture import Architecture
-from arcade_agent.algorithms.coupling import compute_balanced_scores
+from arcade_agent.algorithms.coupling import compute_balanced_scores, graph_quality_context
 from arcade_agent.algorithms.metrics import MetricResult
 from arcade_agent.algorithms.smells import SmellInstance
+from arcade_agent.ci.compare_baseline import _graph_quality_warning_lines
 from arcade_agent.ci.graph_filter import (
     SELF_DOGFOOD_PROFILE,
     _filter_non_architectural_entities,
@@ -115,6 +116,11 @@ def build_report(
     ]
     if baseline_note:
         lines.extend([f"> {baseline_note}", ""])
+
+    quality_warning = _graph_quality_warning_lines({"graph_quality": graph_quality_context(graph)})
+    if quality_warning:
+        lines.extend(quality_warning)
+        lines.append("")
 
     # ── Drift table (only when baseline exists) ──────────────────────────
     if drift and baseline:

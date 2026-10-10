@@ -109,6 +109,33 @@ def test_diff_report_explains_incompatible_baseline_profile(
     assert "Drift from Baseline" not in report
 
 
+def test_diff_report_warns_when_dependency_graph_metrics_are_qualified(
+    sample_arch,
+    sample_graph,
+    sample_metrics,
+):
+    sample_graph.metadata["dependency_resolution"] = {
+        "typescript": {
+            "resolved_local": 8,
+            "unresolved_local": 2,
+            "linked_local": 6,
+            "unlinked_local": 2,
+            "configuration_errors": [],
+            "metrics_qualified": True,
+        }
+    }
+
+    report = build_report(
+        current=sample_arch,
+        graph=sample_graph,
+        metrics=sample_metrics,
+        smells=[],
+    )
+
+    assert "Qualified dependency-graph metrics" in report
+    assert "`typescript`: 8 resolved / 2 unresolved; 6 linked / 2 unlinked." in report
+
+
 def test_diff_report_includes_balanced_scores(sample_arch, sample_graph, sample_metrics):
     """Report includes balanced scores in the legacy drift comment surface."""
     metrics = sample_metrics + [

@@ -6,6 +6,7 @@ from arcade_agent.algorithms.coupling import (
     compute_basic_mq,
     compute_rci,
     compute_turbo_mq,
+    graph_quality_context,
 )
 from arcade_agent.algorithms.smells import SmellInstance
 
@@ -59,6 +60,65 @@ def test_all_metrics(sample_architecture, sample_graph):
     assert len(results) == 6
 
 
+def test_metrics_visibly_qualify_incomplete_dependency_resolution(
+    sample_architecture, sample_graph
+):
+    sample_graph.metadata["dependency_resolution"] = {
+        "typescript": {
+            "import_specifiers": 3,
+            "resolved_local": 1,
+            "external": 1,
+            "unresolved_local": 1,
+            "linked_local": 1,
+            "unlinked_local": 0,
+            "local_resolution_rate": 0.5,
+            "local_edge_rate": 1.0,
+            "configuration_errors": [],
+            "metrics_qualified": True,
+        }
+    }
+
+    metrics = compute_all_metrics(sample_architecture, sample_graph)
+    derived, _, _ = compute_balanced_scores(
+        sample_architecture,
+        sample_graph,
+        [],
+        metrics=metrics,
+    )
+
+    for metric in [*metrics, *derived]:
+        quality = metric.details["graph_quality"]
+        assert quality["status"] == "qualified"
+        assert quality["dependency_resolution"]["typescript"] == {
+            "import_specifiers": 3,
+            "resolved_local": 1,
+            "external": 1,
+            "unresolved_local": 1,
+            "linked_local": 1,
+            "unlinked_local": 0,
+            "local_resolution_rate": 0.5,
+            "local_edge_rate": 1.0,
+            "configuration_error_count": 0,
+            "metrics_qualified": True,
+        }
+
+
+def test_graph_quality_context_counts_truncated_configuration_errors(sample_graph):
+    sample_graph.metadata["dependency_resolution"] = {
+        "typescript": {
+            "import_specifiers": 1,
+            "configuration_errors": ["first", "second"],
+            "configuration_errors_truncated": 3,
+            "metrics_qualified": True,
+        }
+    }
+
+    quality = graph_quality_context(sample_graph)
+
+    summary = quality["dependency_resolution"]["typescript"]
+    assert summary["configuration_error_count"] == 5
+
+
 def test_balanced_scores_are_bounded(sample_architecture, sample_graph):
     metrics = compute_all_metrics(sample_architecture, sample_graph)
 
@@ -83,6 +143,47 @@ def test_balanced_scores_are_bounded(sample_architecture, sample_graph):
     assert all(0.0 <= value <= 1.0 for value in principle_signals.values())
     assert {entry["name"] for entry in score_drivers["risks"]}
     assert {entry["name"] for entry in score_drivers["strengths"]}
+
+
+def test_resolution_metadata_does_not_change_metric_values(sample_architecture, sample_graph):
+    metrics_before = compute_all_metrics(sample_architecture, sample_graph)
+    derived_before, _, _ = compute_balanced_scores(
+        sample_architecture, sample_graph, [], metrics=metrics_before,
+    )
+    sample_graph.metadata["dependency_resolution"] = {
+        "typescript": {
+            "resolved_local": 2,
+            "unresolved_local": 0,
+            "linked_local": 0,
+            "unlinked_local": 2,
+            "metrics_qualified": False,
+        }
+    }
+
+    metrics_after = compute_all_metrics(sample_architecture, sample_graph)
+    derived_after, _, _ = compute_balanced_scores(
+        sample_architecture, sample_graph, [], metrics=metrics_after,
+    )
+
+    assert [(m.name, m.value) for m in [*metrics_after, *derived_after]] == [
+        (m.name, m.value) for m in [*metrics_before, *derived_before]
+    ]
+    for metric in [*metrics_after, *derived_after]:
+        assert metric.details["graph_quality"]["status"] == "complete_for_discovered_imports"
+
+
+def test_resolution_metadata_ignores_non_string_language_keys(sample_architecture, sample_graph):
+    sample_graph.metadata["dependency_resolution"] = {
+        1: {"metrics_qualified": True},
+        "typescript": {"metrics_qualified": False},
+    }
+
+    metrics = compute_all_metrics(sample_architecture, sample_graph)
+
+    for metric in metrics:
+        quality = metric.details["graph_quality"]
+        assert quality["status"] == "complete_for_discovered_imports"
+        assert list(quality["dependency_resolution"]) == ["typescript"]
 
 
 def test_balanced_scores_drop_when_principle_smells_increase(sample_architecture, sample_graph):
