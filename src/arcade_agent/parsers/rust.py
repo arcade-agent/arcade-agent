@@ -931,4 +931,8 @@ class RustParser(LanguageParser):
             entities=entities,
             edges=_deduplicate(edges),
             packages=packages,
+            metadata={"relation_coverage": {"rust": {
+                "collected_relations": ["extends", "implements", "import", "uses"],
+                "call_coverage": "not_collected",
+            }}},
         )

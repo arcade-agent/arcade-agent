@@ -100,6 +100,29 @@ def detect_smells(
         # Heuristic: Concern Overload
         overloads = detect_concern_overload(architecture, dep_graph)
         for overload in overloads:
+            if overload.get("coverage_status") == "insufficient":
+                languages = ", ".join(overload["incomplete_call_languages"])
+                smells.append(SmellInstance(
+                    smell_type=SmellType.CONCERN_OVERLOAD,
+                    severity=overload["severity"],
+                    affected_components=[overload["component"]],
+                    description=(
+                        f"{overload['component']}: insufficient coverage for cohesion "
+                        f"({languages} call relations are not fully collected). "
+                        f"Observed {overload['entity_count']} entities and "
+                        f"{overload['internal_edges']} internal dependencies."
+                    ),
+                    explanation=(
+                        "Missing internal calls can make a cohesive component appear sparse. "
+                        "This is an analysis limitation; multiple responsibilities have "
+                        "not been established. Import-cycle detection remains available."
+                    ),
+                    suggestion=(
+                        "Collect and validate call coverage or inspect source responsibilities "
+                        "before deciding whether to split this component."
+                    ),
+                ))
+                continue
             smells.append(SmellInstance(
                 smell_type=SmellType.CONCERN_OVERLOAD,
                 severity=overload["severity"],

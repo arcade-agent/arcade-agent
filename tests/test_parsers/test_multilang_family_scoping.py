@@ -393,5 +393,6 @@ def test_single_language_parse_matches_direct_parser_output(fixtures_dir: Path):
 def test_duplicate_language_list_is_deduplicated(fixtures_dir: Path, languages):
     root = fixtures_dir / "python_java_mixed"
     graph = parse(str(root), languages=languages, use_cache=False)
-    assert graph.metadata == {}
+    assert graph.relation_coverage()["java"]["call_coverage"] == "not_collected"
+    assert "fqn_collisions" not in graph.metadata
     assert all(e.language == "java" for e in graph.entities.values())
