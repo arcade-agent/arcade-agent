@@ -108,6 +108,26 @@ def _graph_quality_warning_lines(
     return lines
 
 
+def _graph_quality_delta_note(
+    baseline: dict[str, object] | None,
+    current: dict[str, object] | None,
+) -> str | None:
+    """Note when metric deltas compare graphs of different resolution quality."""
+
+    def _qualified(snapshot: dict[str, object] | None) -> bool:
+        if not snapshot:
+            return False
+        quality = snapshot.get("graph_quality")
+        return isinstance(quality, dict) and quality.get("status") == "qualified"
+
+    if _qualified(baseline) == _qualified(current):
+        return None
+    return (
+        "> ℹ️ Only one side of this comparison carries qualified dependency-graph metrics, "
+        "so the metric deltas below compare graphs of different resolution quality."
+    )
+
+
 def _numeric_delta(new: float, old: float) -> str:
     diff = new - old
     if abs(diff) < 0.0001:
@@ -748,6 +768,9 @@ def _write_step_summary(path: Path, report: dict) -> None:
         *_graph_quality_warning_lines(baseline, "Baseline"),
         *_graph_quality_warning_lines(current, "Current"),
     ]
+    delta_note = _graph_quality_delta_note(baseline, current)
+    if delta_note:
+        quality_warning.append(delta_note)
     if quality_warning:
         lines.append("")
         lines.extend(quality_warning)
@@ -894,6 +917,9 @@ def build_comment(
         *_graph_quality_warning_lines(baseline, "Baseline"),
         *_graph_quality_warning_lines(current, "Current"),
     ]
+    delta_note = _graph_quality_delta_note(baseline, current)
+    if delta_note:
+        quality_warning.append(delta_note)
     if quality_warning:
         lines.extend(quality_warning)
         lines.append("")

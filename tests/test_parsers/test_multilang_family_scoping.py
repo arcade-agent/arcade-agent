@@ -296,6 +296,30 @@ def test_merge_qualifies_conflicting_dependency_resolution_without_mutating_inpu
     assert [graph_to_dict(graph) for graph in graphs] == before
 
 
+def test_merge_reports_a_language_conflict_only_once():
+    def graph(name, summary):
+        return DependencyGraph(
+            entities={name: _entity(name, "typescript")},
+            metadata={"dependency_resolution": {"typescript": summary}},
+        )
+
+    first = {"resolved_local": 1, "metrics_qualified": False}
+    other = {"resolved_local": 2, "metrics_qualified": True}
+    merged = merge_and_relink(
+        graph("web.App", first),
+        graph("web.Service", other),
+        graph("web.Other", deepcopy(first)),
+    )
+
+    summary = merged.metadata["dependency_resolution"]["typescript"]
+    assert summary["resolved_local"] == 1
+    assert summary["metrics_qualified"] is True
+    conflicts = [
+        error for error in summary["configuration_errors"] if "Conflicting" in error
+    ]
+    assert len(conflicts) == 1
+
+
 def test_merge_deduplicates_equal_dependency_resolution_summaries():
     resolution = {
         "resolved_local": 1,
@@ -369,5 +393,6 @@ def test_single_language_parse_matches_direct_parser_output(fixtures_dir: Path):
 def test_duplicate_language_list_is_deduplicated(fixtures_dir: Path, languages):
     root = fixtures_dir / "python_java_mixed"
     graph = parse(str(root), languages=languages, use_cache=False)
-    assert graph.metadata == {}
+    assert graph.relation_coverage()["java"]["call_coverage"] == "not_collected"
+    assert "fqn_collisions" not in graph.metadata
     assert all(e.language == "java" for e in graph.entities.values())

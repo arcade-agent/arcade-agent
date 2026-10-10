@@ -312,3 +312,62 @@ def test_explicit_jsonc_extends_is_read_without_changing_the_extension(tmp_path)
     assert resolver.resolve("@model", tmp_path / "use.ts") == ResolvedLocal(
         "model", "tsconfig_paths"
     )
+
+
+def test_catch_all_paths_rule_without_a_source_target_is_external(tmp_path):
+    resolver = _resolver(tmp_path, ["use.ts", "src/types/model.ts"])
+    (tmp_path / "tsconfig.json").write_text(
+        '{"compilerOptions":{"paths":{"*":["src/types/*"]}}}'
+    )
+    assert resolver.resolve("src/types/model", tmp_path / "use.ts") == ExternalImport()
+    assert resolver.resolve("model", tmp_path / "use.ts") == ResolvedLocal(
+        "src.types.model", "tsconfig_paths"
+    )
+    assert resolver.resolve("react", tmp_path / "use.ts") == ExternalImport()
+
+
+def test_package_config_extends_is_a_note_not_a_configuration_error(tmp_path):
+    resolver = _resolver(tmp_path, ["use.ts", "model.ts"])
+    (tmp_path / "tsconfig.json").write_text(json.dumps({
+        "extends": ["@tsconfig/node20/tsconfig.json", "./aliases"],
+    }))
+    (tmp_path / "aliases.json").write_text(
+        '{"compilerOptions":{"paths":{"@model":["model.ts"]}}}'
+    )
+    assert resolver.resolve("@model", tmp_path / "use.ts") == ResolvedLocal(
+        "model", "tsconfig_paths"
+    )
+    assert resolver.resolve("react", tmp_path / "use.ts") == ExternalImport()
+    assert resolver.configuration_errors == ()
+    assert any("@tsconfig/node20" in note for note in resolver.configuration_notes)
+    summary = resolver.summary(
+        {tmp_path / "use.ts": {"react": ExternalImport()}}, set(),
+    )
+    assert summary["metrics_qualified"] is False
+    assert summary["configuration_notes"]
+
+
+@pytest.mark.parametrize("name", ["App.vue", "Card.svelte", "Page.astro", "query.graphql"])
+def test_framework_component_imports_are_not_unresolved_sources(tmp_path, name):
+    resolver = _resolver(tmp_path, ["use.ts"])
+    (tmp_path / name).write_text("")
+    assert resolver.resolve(f"./{name}", tmp_path / "use.ts") == ExternalImport()
+
+
+def test_existing_non_script_file_is_external_but_missing_module_is_not(tmp_path):
+    resolver = _resolver(tmp_path, ["use.ts"])
+    (tmp_path / "shader.wgsl").write_text("")
+    assert resolver.resolve("./shader.wgsl", tmp_path / "use.ts") == ExternalImport()
+    assert isinstance(resolver.resolve("./missing.service", tmp_path / "use.ts"),
+                      UnresolvedLocal)
+
+
+def test_tsconfig_with_utf8_bom_keeps_its_aliases(tmp_path):
+    resolver = _resolver(tmp_path, ["use.ts", "model.ts"])
+    (tmp_path / "tsconfig.json").write_bytes(
+        b'\xef\xbb\xbf{"compilerOptions":{"paths":{"@model":["model.ts"]}}}'
+    )
+    assert resolver.resolve("@model", tmp_path / "use.ts") == ResolvedLocal(
+        "model", "tsconfig_paths"
+    )
+    assert resolver.configuration_errors == ()

@@ -142,7 +142,7 @@ def test_run_self_analysis_writes_balanced_scores(tmp_path, monkeypatch):
         "SmellDiscipline",
     }
     assert set(payload["score_drivers"]) == {"risks", "strengths"}
-    assert payload["graph_metadata"] == {}
+    assert "graph_metadata" not in payload
     assert payload["graph_quality"] is None
 
 

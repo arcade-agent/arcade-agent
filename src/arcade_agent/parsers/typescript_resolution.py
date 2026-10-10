@@ -108,7 +108,21 @@ def is_source_import(specifier: str) -> bool:
         ".jpeg", ".gif", ".webp", ".avif", ".ico", ".woff", ".woff2", ".ttf",
         ".eot", ".wasm", ".html", ".txt", ".md", ".yaml", ".yml", ".mp3",
         ".wav", ".mp4",
+        # Framework single-file components and documents are compiled by their
+        # own toolchains; TypeScript only sees them through ambient shims.
+        ".vue", ".svelte", ".astro", ".graphql", ".gql", ".mdx",
     }
+
+
+def _is_non_source_file(target: Path) -> bool:
+    """Whether an import names an existing file that is not a script module."""
+    suffix = target.suffix.lower()
+    if not suffix or suffix in _SOURCE_EXTENSIONS:
+        return False
+    try:
+        return target.is_file()
+    except OSError:
+        return False
 
 
 def _matches_source(path: Path, directory: Path, pattern: str) -> bool:
@@ -212,7 +226,7 @@ def _strip_trailing_commas(text: str) -> str:
 
 
 def _read_json_object(path: Path) -> dict[str, Any]:
-    raw = _strip_trailing_commas(_strip_jsonc_comments(path.read_text(encoding="utf-8")))
+    raw = _strip_trailing_commas(_strip_jsonc_comments(path.read_text(encoding="utf-8-sig")))
     value = json.loads(raw)
     if not isinstance(value, dict):
         raise TypeError("top-level JSON value must be an object")
@@ -277,6 +291,7 @@ class TypeScriptModuleResolver:
             Path, tuple[dict[str, _PathMapping], tuple[_PathMapping, ...]]
         ] = {}
         self._configuration_errors: set[str] = set()
+        self._configuration_notes: set[str] = set()
         self._path_cache: dict[Path, str | None] = {}
         self._duplicate_workspace_names: set[str] = set()
         self._root_config_paths = self._discover_root_config_paths()
@@ -285,6 +300,10 @@ class TypeScriptModuleResolver:
     @property
     def configuration_errors(self) -> tuple[str, ...]:
         return tuple(sorted(self._configuration_errors))
+
+    @property
+    def configuration_notes(self) -> tuple[str, ...]:
+        return tuple(sorted(self._configuration_notes))
 
     def _relative_display(self, path: Path) -> str:
         try:
@@ -315,10 +334,15 @@ class TypeScriptModuleResolver:
     def _resolve_extends_path(self, config_path: Path, specifier: str) -> Path | None:
         if not specifier.startswith((".", "/")):
             # Package-based config inheritance needs Node's package resolver.
-            self._record_configuration_error(
-                config_path,
-                ValueError(f"unsupported package config extends: {specifier}"),
-            )
+            # Shared bases (@tsconfig/node20, @vue/tsconfig, ...) set compiler
+            # flags rather than local aliases, so the gap is informational:
+            # an alias that only the package defines still surfaces as an
+            # external import, not as a fabricated local edge.
+            note = (f"{self._relative_display(config_path)}: "
+                    f"package config extends not followed: {specifier}")
+            if note not in self._configuration_notes:
+                logger.info("TypeScript configuration: %s", note)
+                self._configuration_notes.add(note)
             return None
         return self._resolve_config_path(config_path, specifier)
 
@@ -692,6 +716,10 @@ class TypeScriptModuleResolver:
                     module = self._lookup_path((config.base_url or mapping.base_directory) / target)
                     if module is not None:
                         return module, True
+                if mapping.pattern == "*":
+                    # A bare catch-all with no source target falls back to
+                    # node_modules in tsc, so it says nothing about locality.
+                    break
                 # TypeScript chooses the most specific matching paths rule.  A
                 # stale exact rule must stay visible rather than silently falling
                 # through to a broader wildcard and fabricating confidence.
@@ -769,14 +797,19 @@ class TypeScriptModuleResolver:
             )
             return UnresolvedLocal("package.json #imports are not supported")
         if specifier.startswith("."):
-            module = self._lookup_path(importing.parent / specifier)
+            target = importing.parent / specifier
+            module = self._lookup_path(target)
             if module is not None:
                 return ResolvedLocal(module, "relative")
+            if _is_non_source_file(target):
+                return ExternalImport()
             return UnresolvedLocal("relative import target is outside the parsed source set")
         if specifier.startswith("/"):
             module = self._lookup_path(Path(specifier))
             if module is not None:
                 return ResolvedLocal(module, "absolute")
+            if _is_non_source_file(Path(specifier)):
+                return ExternalImport()
             return UnresolvedLocal("absolute import target is outside the parsed source set")
 
         configs = self._configs_for(importing)
@@ -876,6 +909,7 @@ class TypeScriptModuleResolver:
                 0, len(configuration_errors) - _MAX_DIAGNOSTICS
             ),
             "configuration_errors_affect_resolution": configuration_incomplete,
+            "configuration_notes": list(self.configuration_notes)[:_MAX_DIAGNOSTICS],
             "unresolved_local_imports": unresolved_details,
             "unresolved_local_imports_truncated": max(
                 0, len(unresolved) - _MAX_DIAGNOSTICS

@@ -28,7 +28,7 @@ import logging
 from dataclasses import replace
 from typing import Any
 
-from arcade_agent.parsers.graph import DependencyGraph, Edge, Entity
+from arcade_agent.parsers.graph import DependencyGraph, Edge, Entity, merge_relation_coverage
 
 logger = logging.getLogger(__name__)
 
@@ -228,6 +228,7 @@ def _dependency_resolution_metadata(
 ) -> dict[str, dict[str, Any]]:
     """Preserve language-keyed parser resolution metadata across graph union."""
     by_language: dict[str, Any] = {}
+    conflicted_languages: set[str] = set()
     for graph in graphs:
         raw = graph.metadata.get("dependency_resolution")
         if not isinstance(raw, dict):
@@ -236,12 +237,13 @@ def _dependency_resolution_metadata(
             if not isinstance(language, str) or not isinstance(summary, dict):
                 continue
             if language in by_language and by_language[language] != summary:
-                logger.warning(
-                    "Conflicting dependency-resolution metadata for %s; keeping first",
-                    language,
-                )
                 kept = by_language[language]
-                if isinstance(kept, dict):
+                if isinstance(kept, dict) and language not in conflicted_languages:
+                    conflicted_languages.add(language)
+                    logger.warning(
+                        "Conflicting dependency-resolution metadata for %s; keeping first",
+                        language,
+                    )
                     kept = dict(kept)
                     errors = kept.get("configuration_errors")
                     kept["configuration_errors"] = [
@@ -359,6 +361,9 @@ def merge_and_relink(*graphs: DependencyGraph) -> DependencyGraph:
     )
     if collision_details:
         metadata["fqn_collision_details"] = collision_details
+    coverage = merge_relation_coverage(*graphs)
+    if coverage:
+        metadata["relation_coverage"] = coverage
     return relink_edges(
         DependencyGraph(
             entities=entities,

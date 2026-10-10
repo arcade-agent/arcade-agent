@@ -62,6 +62,9 @@ def graph_quality_context(dep_graph: DependencyGraph) -> dict[str, object] | Non
             continue
         configuration_errors = value.get("configuration_errors")
         error_count = len(configuration_errors) if isinstance(configuration_errors, list) else 0
+        truncated = value.get("configuration_errors_truncated")
+        if isinstance(truncated, int) and not isinstance(truncated, bool) and truncated > 0:
+            error_count += truncated
         summary = {field: value[field] for field in fields if field in value}
         summary["configuration_error_count"] = error_count
         language_qualified = value.get("metrics_qualified") is True

@@ -161,7 +161,7 @@ configuration diagnostics qualify graph-derived metrics without changing their f
 HTML and CI comparisons retain that context for both baseline and current snapshots.
 
 This resolver does not implement all compiler resolution modes. Dynamic `import()`,
-CommonJS `require()`, custom resolver plugins and external package-based config inheritance
+custom resolver plugins and external package-based config inheritance
 are outside its scope. Unsupported `${configDir}` and package `#imports` inputs produce
 diagnostics. See the CHANGELOG migration note before replacing TypeScript baselines.
 
@@ -382,17 +382,17 @@ jobs:
       issues: write
       pull-requests: write
     steps:
-      - uses: arcade-agent/arcade-agent/actions/analyze@v0.4.0
+      - uses: arcade-agent/arcade-agent/actions/analyze@v0.4.1 # x-release-please-version
         with:
-          arcade-agent-version: "0.4.0"
+          arcade-agent-version: "0.4.1" # x-release-please-version
 ```
 
 Common optional inputs:
 
 ```yaml
-      - uses: arcade-agent/arcade-agent/actions/analyze@v0.4.0
+      - uses: arcade-agent/arcade-agent/actions/analyze@v0.4.1 # x-release-please-version
         with:
-          arcade-agent-version: "0.4.0"
+          arcade-agent-version: "0.4.1" # x-release-please-version
           source-path: "."
           language: ""
           exclude-tests: "true"
@@ -403,8 +403,11 @@ Common optional inputs:
 ```
 
 For reproducible CI, keep `arcade-agent-version` pinned to a released package
-version such as `"0.4.0"`. Avoid `latest` in shared CI because a new package
+version such as `"0.4.1"`. Avoid `latest` in shared CI because a new package <!-- x-release-please-version -->
 release can change analyzer behavior without a workflow review.
+
+Maintainers: see [the release process](docs/releasing.md) for minor-version
+automation, CI artifact publication, setup and retries.
 
 The action stores the baseline as a GitHub Actions artifact on
 successful pushes to the repository default branch and uses that artifact for
@@ -439,6 +442,28 @@ The action posts a comment with:
 - **Smells** — dependency cycles, concern overload, scattered functionality
 
 The comment is updated on each push to the PR (not duplicated).
+
+## 🏛️ Java Structural Analysis Case Studies
+
+Five Java repositories serve as living testbeds for `arcade-agent/analyze-action`.
+Their dashboards show structural analysis findings that need interpretation in
+light of parser coverage and source references. Snapshot counts checked on
+2026-09-29 are shown below; live badges may change.
+
+| Project | Components (0.3.0) | Detected smells (0.3.0) | Components (after #52/#58/#59) | Detected smells (after #52/#58/#59) | Investigation | Live report |
+| --- | ---: | ---: | ---: | ---: | --- | --- |
+| **parallel-collectors** | 97 | 0 | 1 | 0 | Reference snapshot; zero findings is not coverage proof | [Report](https://arcade-agent.github.io/parallel-collectors/) |
+| **LMAX Disruptor** | 294 | 5 | 3 | 2 | Core/DSL package dependency through a public enum | [Report](https://arcade-agent.github.io/disruptor/) |
+| **HikariCP** | 10 | 7 | 5 | 4 | Pool/root-package cycle through config and MXBean types | [Report](https://arcade-agent.github.io/HikariCP/) |
+| **Caffeine** | 766 | 4 | 2 | 1 | cache/stats cycle through `RemovalCause` in stats signatures | [Report](https://arcade-agent.github.io/caffeine/) |
+| **Dataverse** | 189 | 86 | 48 | 29 | Large structural cycle candidate requiring source review | [Report](https://arcade-agent.github.io/dataverse/) |
+
+The 0.3.0 columns are what the reviewed runs installed
+(`arcade-agent[languages]==0.3.0`); the post-fix columns are @lemduc's
+2026-10-07 re-run and describe the analyzer on current `main`. Read the
+[Java case studies](docs/case-studies/java-structural-case-studies.md) for pinned
+source commits, successful analysis runs, scope and limitations. These reports
+do not establish call-graph completeness or a controlled speed benchmark.
 
 ## Roadmap
 

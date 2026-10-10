@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "arcade-agent"
-version = "0.4.0"
+version = "0.4.1"
 description = "Framework-agnostic tool library for software architecture analysis"
 readme = "README.md"
 license = "MIT"

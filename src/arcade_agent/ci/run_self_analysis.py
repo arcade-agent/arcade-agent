@@ -198,7 +198,6 @@ def main() -> None:
         "derived_metrics": {m.name: round(m.value, 4) for m in derived_metrics},
         "principle_signals": principle_signals,
         "score_drivers": score_drivers,
-        "graph_metadata": graph.metadata,
         "graph_quality": graph_quality_context(graph),
         "smells": [_smell_to_dict(s) for s in smells],
     }
