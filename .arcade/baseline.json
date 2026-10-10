@@ -1,6 +1,6 @@
 {
   "algorithm": "pkg",
-  "rationale": "Package-based grouping (depth=1 after common prefix 'arcade_agent') with dependency-affinity facade refinement (9 entities reassigned).",
+  "rationale": "Package-based grouping (depth=1 after common prefix 'arcade_agent') with dependency-affinity facade refinement (12 entities reassigned).",
   "metadata": {
     "analysis_profile": "arcade-self-dogfood-v1"
   },
@@ -213,7 +213,10 @@
         "arcade_agent.source.ingest.IngestedRepo",
         "arcade_agent.source.ingest.ingest",
         "arcade_agent.source.parse.detect_languages_from_files",
-        "arcade_agent.source.parse.parse"
+        "arcade_agent.source.parse.parse",
+        "arcade_agent.tools.ingest",
+        "arcade_agent.tools.parse",
+        "arcade_agent.tools.summarize.summarize"
       ]
     },
     {
@@ -239,33 +242,30 @@
         "arcade_agent.tools.guard.preview_impact",
         "arcade_agent.tools.guard.propose_placement",
         "arcade_agent.tools.guard.remediate",
-        "arcade_agent.tools.ingest",
-        "arcade_agent.tools.parse",
         "arcade_agent.tools.query.query",
         "arcade_agent.tools.recover.recover",
         "arcade_agent.tools.registry.ToolDef",
         "arcade_agent.tools.registry.get_tool",
         "arcade_agent.tools.registry.list_tools",
         "arcade_agent.tools.registry.tool",
-        "arcade_agent.tools.summarize.summarize",
         "arcade_agent.tools.visualize.visualize"
       ]
     }
   ],
   "metrics": {
-    "RCI": 0.5497,
-    "TurboMQ": 2.6013,
-    "BasicMQ": 0.2365,
-    "IntraConnectivity": 0.012,
-    "InterConnectivity": 0.0412,
+    "RCI": 0.5762,
+    "TurboMQ": 2.8441,
+    "BasicMQ": 0.2586,
+    "IntraConnectivity": 0.0136,
+    "InterConnectivity": 0.0402,
     "TwoWayPairRatio": 0.0,
-    "DependencyHealth": 0.9773,
-    "ComponentBalance": 0.4263,
-    "HubBalance": 0.5,
+    "DependencyHealth": 0.9779,
+    "ComponentBalance": 0.4333,
+    "HubBalance": 0.4,
     "BoundaryClarity": 0.9455,
-    "DependencyDistribution": 0.6429,
+    "DependencyDistribution": 0.6234,
     "SmellDiscipline": 0.9455,
-    "PrincipleAlignmentScore": 0.8475,
-    "BalancedArchitectureScore": 0.6115
+    "PrincipleAlignmentScore": 0.8368,
+    "BalancedArchitectureScore": 0.6196
   }
 }
