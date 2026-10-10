@@ -286,3 +286,37 @@ def test_src_layout_imports_resolve_without_the_src_prefix(tmp_path):
 
     assert ("src.conduit.routes.articles.show",
             "src.conduit.repositories.user_repository.UserRepository", "import") in edges
+
+
+def test_import_of_a_module_level_variable_links_to_its_module(tmp_path):
+    """Regression for #67: ``from repo.database import db`` is a dependency."""
+    paths = _write(tmp_path, {
+        "app/repositories/database.py": "db = object()\n\ndef init_db():\n    return db\n",
+        "app/repositories/settings.py": "TIMEOUT: int = 5\n",
+        "app/models/user.py": (
+            "from app.repositories.database import db\n"
+            "from app.repositories.settings import TIMEOUT\n\n"
+            "class User:\n"
+            "    def save(self):\n"
+            "        return db, TIMEOUT\n"
+        ),
+    })
+
+    edges = PythonParser().parse(paths, tmp_path).to_edge_tuples()
+
+    # database.py declares a function, which stands in for the module;
+    # settings.py declares nothing, so it is its own module entity.
+    assert ("app.models.user.User.save", "app.repositories.database.init_db",
+            "import") in edges
+    assert ("app.models.user.User.save", "app.repositories.settings", "import") in edges
+
+
+def test_module_variables_survive_the_incremental_cache(tmp_path):
+    from arcade_agent.incremental import _facts_from_json, _facts_to_json
+    from arcade_agent.parsers.python import extract_file
+
+    (tmp_path / "database.py").write_text("db = object()\n\ndef init_db():\n    return db\n")
+    facts = extract_file(tmp_path / "database.py", tmp_path)
+
+    assert facts is not None
+    assert _facts_from_json(_facts_to_json(facts)).module_vars == ["db"]
