@@ -615,3 +615,83 @@ def test_vue_project_with_shared_tsconfig_base_is_not_qualified(tmp_path):
     assert summary["unresolved_local"] == 0
     assert summary["configuration_errors"] == []
     assert summary["metrics_qualified"] is False
+
+
+def _write_js(root, files):
+    paths = []
+    for rel, text in files.items():
+        path = root / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text)
+        paths.append(path)
+    return paths
+
+
+def test_commonjs_require_and_module_exports_produce_edges(tmp_path):
+    """Regression for #68: CommonJS modules were parsed with no edges."""
+    paths = _write_js(tmp_path, {
+        "repositories/userRepository.js": (
+            "class UserRepository { find(id) { return id; } }\n"
+            "module.exports = UserRepository;\n"
+        ),
+        "services/userService.js": (
+            "const UserRepository = require('../repositories/userRepository');\n"
+            "function getUser(id) { return new UserRepository().find(id); }\n"
+            "module.exports = { getUser };\n"
+        ),
+        "routes/users.js": (
+            "const { getUser } = require('../services/userService');\n"
+            "function show(req) { return getUser(req.id); }\n"
+            "module.exports = { show };\n"
+        ),
+    })
+
+    edges = set(TypeScriptParser().parse(paths, tmp_path).to_edge_tuples())
+
+    assert ("routes.users.show", "services.userService.getUser", "import") in edges
+    assert ("services.userService.getUser",
+            "repositories.userRepository.UserRepository", "import") in edges
+
+
+def test_commonjs_namespace_member_and_exports_assignments(tmp_path):
+    paths = _write_js(tmp_path, {
+        "services/articles.js": (
+            "function list() { return []; }\n"
+            "const create = (data) => data;\n"
+            "exports.list = list;\n"
+            "module.exports.create = create;\n"
+        ),
+        "routes/articles.js": (
+            "const articles = require('../services/articles');\n"
+            "const create = require('../services/articles').create;\n"
+            "function index() { return articles.list(); }\n"
+            "function post(body) { return create(body); }\n"
+            "module.exports = { index, post };\n"
+        ),
+    })
+
+    edges = set(TypeScriptParser().parse(paths, tmp_path).to_edge_tuples())
+
+    assert ("routes.articles.index", "services.articles.list", "import") in edges
+    assert ("routes.articles.post", "services.articles.create", "import") in edges
+
+
+def test_commonjs_index_reexports_and_external_requires(tmp_path):
+    paths = _write_js(tmp_path, {
+        "models/user.js": "class User {}\nmodule.exports = User;\n",
+        "models/index.js": (
+            "const User = require('./user');\n"
+            "module.exports = { User };\n"
+        ),
+        "services/users.js": (
+            "const express = require('express');\n"
+            "const { User } = require('../models');\n"
+            "function make() { return new User(); }\n"
+            "module.exports = { make };\n"
+        ),
+    })
+
+    edges = set(TypeScriptParser().parse(paths, tmp_path).to_edge_tuples())
+
+    assert ("services.users.make", "models.user.User", "import") in edges
+    assert not [edge for edge in edges if "express" in edge[1]]
