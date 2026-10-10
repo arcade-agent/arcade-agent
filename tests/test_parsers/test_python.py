@@ -168,3 +168,121 @@ def test_python_parser_drops_imports_above_the_root(tmp_path):
     graph = PythonParser().parse(paths, tmp_path)
 
     assert graph.to_edge_tuples() == []
+
+
+def test_external_import_does_not_link_to_a_local_entity_with_the_same_name(tmp_path):
+    """Regression for #66: ``from sqlalchemy import delete`` is not ``Service.delete``."""
+    paths = _write(tmp_path, {
+        "app/services/articles.py": (
+            "from sqlalchemy import delete\n\n"
+            "class ArticleService:\n"
+            "    def delete(self, slug):\n"
+            "        return slug\n"
+        ),
+        "app/repositories/articles.py": (
+            "from sqlalchemy import delete\n\n"
+            "class ArticleRepository:\n"
+            "    def remove(self, session):\n"
+            "        return session.execute(delete('articles'))\n"
+        ),
+    })
+
+    edges = PythonParser().parse(paths, tmp_path).to_edge_tuples()
+
+    assert not [edge for edge in edges if edge[1].endswith("ArticleService.delete")]
+
+
+def test_missing_name_does_not_link_to_an_unrelated_module(tmp_path):
+    """Regression for #66: a name absent from the imported module stays unresolved."""
+    paths = _write(tmp_path, {
+        "app/routes/handlers.py": "def create_article(request):\n    return request\n",
+        "app/repositories/article_repo.py": "def find_article(slug):\n    return slug\n",
+        "app/services/creating.py": (
+            "from app.repositories.article_repo import create_article\n\n"
+            "def create_article_service(data):\n"
+            "    return create_article(data)\n"
+        ),
+    })
+
+    edges = PythonParser().parse(paths, tmp_path).to_edge_tuples()
+
+    assert ("app.services.creating.create_article_service",
+            "app.routes.handlers.create_article", "import") not in edges
+
+
+def test_package_reexport_still_resolves_inside_the_package(tmp_path):
+    paths = _write(tmp_path, {
+        "app/models/__init__.py": "from .user import User\n",
+        "app/models/user.py": "class User:\n    pass\n",
+        "app/other/user.py": "class User:\n    pass\n",
+        "app/services/users.py": (
+            "from app.models import User\n\n"
+            "def make():\n"
+            "    return User()\n"
+        ),
+    })
+
+    edges = PythonParser().parse(paths, tmp_path).to_edge_tuples()
+
+    assert ("app.services.users.make", "app.models.user.User", "import") in edges
+    assert ("app.services.users.make", "app.other.user.User", "import") not in edges
+
+
+def test_superclass_resolves_through_imports_not_by_bare_name(tmp_path):
+    paths = _write(tmp_path, {
+        "app/base.py": "class Base:\n    pass\n",
+        "app/unrelated.py": "class Model:\n    pass\n",
+        "app/models.py": (
+            "from flask_sqlalchemy import Model\n"
+            "from app.base import Base\n\n"
+            "class Local:\n    pass\n\n"
+            "class Article(Model):\n    pass\n\n"
+            "class Comment(Base):\n    pass\n\n"
+            "class Reply(Local):\n    pass\n"
+        ),
+    })
+
+    edges = PythonParser().parse(paths, tmp_path).to_edge_tuples()
+
+    assert ("app.models.Article", "app.unrelated.Model", "extends") not in edges
+    assert ("app.models.Comment", "app.base.Base", "extends") in edges
+    assert ("app.models.Reply", "app.models.Local", "extends") in edges
+
+
+def test_reexport_shim_module_resolves_to_the_defining_module(tmp_path):
+    """A compatibility module that re-exports a class links to its definition."""
+    paths = _write(tmp_path, {
+        "pkg/algorithms/architecture.py": "class Architecture:\n    pass\n",
+        "pkg/models/architecture.py": (
+            "from pkg.algorithms.architecture import Architecture\n"
+        ),
+        "pkg/other/architecture.py": "class Architecture:\n    pass\n",
+        "pkg/serialization.py": (
+            "from pkg.models.architecture import Architecture\n\n"
+            "def load():\n"
+            "    return Architecture()\n"
+        ),
+    })
+
+    edges = PythonParser().parse(paths, tmp_path).to_edge_tuples()
+
+    assert ("pkg.serialization.load", "pkg.algorithms.architecture.Architecture",
+            "import") in edges
+    assert ("pkg.serialization.load", "pkg.other.architecture.Architecture",
+            "import") not in edges
+
+
+def test_src_layout_imports_resolve_without_the_src_prefix(tmp_path):
+    paths = _write(tmp_path, {
+        "src/conduit/repositories/user_repository.py": "class UserRepository:\n    pass\n",
+        "src/conduit/routes/articles.py": (
+            "from conduit.repositories.user_repository import UserRepository\n\n"
+            "def show():\n"
+            "    return UserRepository()\n"
+        ),
+    })
+
+    edges = PythonParser().parse(paths, tmp_path).to_edge_tuples()
+
+    assert ("src.conduit.routes.articles.show",
+            "src.conduit.repositories.user_repository.UserRepository", "import") in edges
