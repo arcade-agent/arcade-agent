@@ -19,6 +19,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   legacy graphs retain the existing heuristic contract.
   Existing Java/Kotlin/Rust smell severities and derived scores can change; regenerate
   baselines before comparing them with reports from earlier versions.
+## [0.4.0](https://github.com/arcade-agent/arcade-agent/compare/v0.3.0...v0.4.0) (2026-10-10)
+
+
+### Features
+
+* **guard:** move the architecture guardrail into the package ([#56](https://github.com/arcade-agent/arcade-agent/issues/56)) ([62a34a6](https://github.com/arcade-agent/arcade-agent/commit/62a34a6d30b764eceebc1bfbfcf76be54714b004))
+
+
+### Bug Fixes
+
+* be accurate about algorithm fidelity; fail clearly without claude ([#61](https://github.com/arcade-agent/arcade-agent/issues/61)) ([c1d3e4a](https://github.com/arcade-agent/arcade-agent/commit/c1d3e4a757304547cd11e5c1792db1dd5d6965f8))
+* **find_relevant:** drop stopwords from queries and task descriptions ([#57](https://github.com/arcade-agent/arcade-agent/issues/57)) ([b694e1e](https://github.com/arcade-agent/arcade-agent/commit/b694e1efbe29bf0b09308a9a16154b32fe578c2c))
+* **parser:** ignore unreferenced Java imports ([#52](https://github.com/arcade-agent/arcade-agent/issues/52)) ([5b0bcce](https://github.com/arcade-agent/arcade-agent/commit/5b0bcce5f6e48a53525d0d1d415ef185df761a14))
+* **parsers:** resolve Python relative imports and Java same-package references ([#59](https://github.com/arcade-agent/arcade-agent/issues/59)) ([417bf0d](https://github.com/arcade-agent/arcade-agent/commit/417bf0da586f12836bb245c61893c6916251080c))
+* preserve dependency resolution quality in metrics and reports ([#53](https://github.com/arcade-agent/arcade-agent/issues/53)) ([3ac20f3](https://github.com/arcade-agent/arcade-agent/commit/3ac20f34bb0727f7418e92ff6a7638fae147c8db))
+* qualify cohesion findings with structural parser coverage ([#44](https://github.com/arcade-agent/arcade-agent/issues/44)) ([16a3916](https://github.com/arcade-agent/arcade-agent/commit/16a391606a9fae8c51b70f750bc7ace0f77883d2))
+* **recover:** stop pkg recovery splitting JVM root packages per method ([#58](https://github.com/arcade-agent/arcade-agent/issues/58)) ([23a9219](https://github.com/arcade-agent/arcade-agent/commit/23a9219cc975a9ec2bc71636d192eb9f7b467225))
+* resolve configured TypeScript imports and re-exports ([#42](https://github.com/arcade-agent/arcade-agent/issues/42)) ([01522ab](https://github.com/arcade-agent/arcade-agent/commit/01522ab96e0584af7d6b85c3e95fcfcb3ae5d4b1))
+* **typescript:** stop qualifying graphs on catch-all paths, package extends and framework files ([#65](https://github.com/arcade-agent/arcade-agent/issues/65)) ([457a53a](https://github.com/arcade-agent/arcade-agent/commit/457a53a5f431c24e3ab01fadfc06624434ae7593))
+
+
+### Documentation
+
+* add evidence-backed Java structural analysis case studies ([#46](https://github.com/arcade-agent/arcade-agent/issues/46)) ([3e68860](https://github.com/arcade-agent/arcade-agent/commit/3e68860d0e26d0d7e41c1fa1c43a33ef026d7ec1))
+
 ## 0.4.0 — 2026-10-07
 
 Recovered architectures change for many projects in this release: parsing now
