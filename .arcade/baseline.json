@@ -14,6 +14,7 @@
         "arcade_agent.algorithms.architecture.Architecture",
         "arcade_agent.algorithms.architecture.Component",
         "arcade_agent.algorithms.clustering.wca",
+        "arcade_agent.algorithms.concern.ConcernOverloadFinding",
         "arcade_agent.algorithms.concern.detect_concern_overload",
         "arcade_agent.algorithms.concern.detect_concerns_llm",
         "arcade_agent.algorithms.concern.detect_link_overload",
@@ -156,6 +157,8 @@
         "arcade_agent.parsers.graph.DependencyGraph",
         "arcade_agent.parsers.graph.Edge",
         "arcade_agent.parsers.graph.Entity",
+        "arcade_agent.parsers.graph.RelationCoverage",
+        "arcade_agent.parsers.graph.merge_relation_coverage",
         "arcade_agent.parsers.java.JavaParser",
         "arcade_agent.parsers.kotlin.KotlinParser",
         "arcade_agent.parsers.multilang.language_family",
@@ -250,19 +253,19 @@
     }
   ],
   "metrics": {
-    "RCI": 0.5467,
-    "TurboMQ": 2.5997,
-    "BasicMQ": 0.2363,
-    "IntraConnectivity": 0.0123,
-    "InterConnectivity": 0.0414,
+    "RCI": 0.5497,
+    "TurboMQ": 2.6013,
+    "BasicMQ": 0.2365,
+    "IntraConnectivity": 0.012,
+    "InterConnectivity": 0.0412,
     "TwoWayPairRatio": 0.0,
-    "DependencyHealth": 0.9772,
-    "ComponentBalance": 0.4299,
+    "DependencyHealth": 0.9773,
+    "ComponentBalance": 0.4263,
     "HubBalance": 0.5,
     "BoundaryClarity": 0.9455,
     "DependencyDistribution": 0.6429,
     "SmellDiscipline": 0.9455,
-    "PrincipleAlignmentScore": 0.8479,
-    "BalancedArchitectureScore": 0.6111
+    "PrincipleAlignmentScore": 0.8475,
+    "BalancedArchitectureScore": 0.6115
   }
 }
