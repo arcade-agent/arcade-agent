@@ -271,6 +271,28 @@ def _extract_referenced_names(node) -> set[str]:
             stack.append(child)
     return names
 
+def _extract_module_variables(root_node) -> list[str]:
+    """Names bound by top-level assignments (``db = SQLAlchemy()``, ``X: int = 1``)."""
+    names: list[str] = []
+    for child in root_node.children:
+        if child.type != "expression_statement":
+            continue
+        for node in child.children:
+            if node.type != "assignment":
+                continue
+            left = node.child_by_field_name("left")
+            targets = [left] if left is not None and left.type == "identifier" else (
+                [n for n in left.children if n.type == "identifier"]
+                if left is not None and left.type in ("pattern_list", "tuple_pattern")
+                else []
+            )
+            for target in targets:
+                name = _get_text(target)
+                if name and name not in names:
+                    names.append(name)
+    return names
+
+
 def _should_skip_module_entity(py_file: Path, declarations: list[dict]) -> bool:
     """Ignore package marker modules that do not declare any symbols.
 
@@ -292,6 +314,7 @@ class FileFacts:
     entities: dict[str, Entity] = field(default_factory=dict)   # fqn -> Entity (this file)
     file_imports: list[dict] = field(default_factory=list)      # shared by entities in the file
     refs: dict[str, set[str]] = field(default_factory=dict)     # fqn -> referenced names
+    module_vars: list[str] = field(default_factory=list)        # top-level assignment names
 
 
 _PARSER: Parser | None = None
@@ -362,7 +385,8 @@ def extract_file(py_file: Path, root: Path) -> FileFacts | None:
             refs_map[fqn] = refs
 
     return FileFacts(rel_path=rel_path, package=package, entities=entities,
-                     file_imports=file_imports, refs=refs_map)
+                     file_imports=file_imports, refs=refs_map,
+                     module_vars=_extract_module_variables(root_node))
 
 
 def _module_of(rel_path: str) -> str:
@@ -439,10 +463,19 @@ def link(facts: list[FileFacts]) -> DependencyGraph:
         if entity.kind != "method":
             by_name.setdefault(entity.name, []).append(entity.fqn)
 
-    # Each parsed module's own imports, for following re-exports.
+    # Each parsed module's own imports, for following re-exports, and the
+    # entity that stands in for the module's top-level variables (#67): the
+    # module entity when the file declares nothing, else its first top-level
+    # declaration, so the dependency lands on the right module.
     imports_by_module: dict[str, list[dict]] = {}
+    variable_owner: dict[tuple[str, str], str] = {}
     for ff in facts:
-        imports_by_module[_module_of(ff.rel_path)] = ff.file_imports
+        module_name = _module_of(ff.rel_path)
+        imports_by_module[module_name] = ff.file_imports
+        candidates = sorted(f for f, e in ff.entities.items() if e.kind != "method")
+        if candidates:
+            for var in ff.module_vars:
+                variable_owner[(module_name, var)] = candidates[0]
 
     def canonical(module: str) -> str:
         """Map an imported module to its parsed name under a nested source root.
@@ -472,6 +505,9 @@ def link(facts: list[FileFacts]) -> DependencyGraph:
         target = f"{module}.{name}"
         if target in entities:
             return target
+        owner = variable_owner.get((module, name))
+        if owner is not None:
+            return owner
         if module not in seen:
             for imp in imports_by_module.get(module, ()):
                 for original in imp["names"]:
