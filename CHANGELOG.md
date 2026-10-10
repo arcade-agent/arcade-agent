@@ -5,6 +5,20 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.4.1](https://github.com/arcade-agent/arcade-agent/compare/v0.4.0...v0.4.1) (2026-10-10)
+
+
+### Features
+
+* **typescript:** parse CommonJS require() and module.exports ([#71](https://github.com/arcade-agent/arcade-agent/issues/71)) ([0ccffbe](https://github.com/arcade-agent/arcade-agent/commit/0ccffbe08384da3dceb3c31c836d517b1874190b)), closes [#68](https://github.com/arcade-agent/arcade-agent/issues/68)
+
+
+### Bug Fixes
+
+* **python:** link imports of module-level variables to their module ([#70](https://github.com/arcade-agent/arcade-agent/issues/70)) ([86fba4b](https://github.com/arcade-agent/arcade-agent/commit/86fba4bb543fa0905afb6ae875dd2f08b600826f)), closes [#67](https://github.com/arcade-agent/arcade-agent/issues/67)
+* **python:** resolve imports through their module, not by bare name ([#69](https://github.com/arcade-agent/arcade-agent/issues/69)) ([67934f6](https://github.com/arcade-agent/arcade-agent/commit/67934f6a5c52ce3a211bae12916e20e55928ed79)), closes [#66](https://github.com/arcade-agent/arcade-agent/issues/66)
+* **typescript:** link imports of exported object values to their module ([#73](https://github.com/arcade-agent/arcade-agent/issues/73)) ([b2fbff0](https://github.com/arcade-agent/arcade-agent/commit/b2fbff05c25e5f735eefa10fda0655a62791c9e8)), closes [#72](https://github.com/arcade-agent/arcade-agent/issues/72)
+
 ## [0.4.0](https://github.com/arcade-agent/arcade-agent/compare/v0.3.0...v0.4.0) (2026-10-10)
 
 Recovered architectures change for many projects in this release: parsing now

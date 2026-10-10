@@ -368,17 +368,17 @@ jobs:
       issues: write
       pull-requests: write
     steps:
-      - uses: arcade-agent/arcade-agent/actions/analyze@v0.4.0 # x-release-please-version
+      - uses: arcade-agent/arcade-agent/actions/analyze@v0.4.1 # x-release-please-version
         with:
-          arcade-agent-version: "0.4.0" # x-release-please-version
+          arcade-agent-version: "0.4.1" # x-release-please-version
 ```
 
 Common optional inputs:
 
 ```yaml
-      - uses: arcade-agent/arcade-agent/actions/analyze@v0.4.0 # x-release-please-version
+      - uses: arcade-agent/arcade-agent/actions/analyze@v0.4.1 # x-release-please-version
         with:
-          arcade-agent-version: "0.4.0" # x-release-please-version
+          arcade-agent-version: "0.4.1" # x-release-please-version
           source-path: "."
           language: ""
           exclude-tests: "true"
@@ -389,7 +389,7 @@ Common optional inputs:
 ```
 
 For reproducible CI, keep `arcade-agent-version` pinned to a released package
-version such as `"0.4.0"`. Avoid `latest` in shared CI because a new package <!-- x-release-please-version -->
+version such as `"0.4.1"`. Avoid `latest` in shared CI because a new package <!-- x-release-please-version -->
 release can change analyzer behavior without a workflow review.
 
 Maintainers: see [the release process](docs/releasing.md) for minor-version
