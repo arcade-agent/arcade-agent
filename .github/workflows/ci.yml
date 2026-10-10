@@ -107,7 +107,23 @@ jobs:
         with:
           script: |
             const {data} = await github.rest.git.getRef({...context.repo, ref: 'heads/main'});
-            const current = data.object.sha === process.env.TESTED_SHA;
+            const head = data.object.sha;
+            let current = head === process.env.TESTED_SHA;
+            if (!current) {
+              // The dogfood workflow pushes the architecture baseline with the
+              // Actions token, which starts no CI run of its own. Only those
+              // commits on top of the tested one still leave this run in charge;
+              // otherwise a release PR merged before a baseline update is never
+              // tagged.
+              const {data: cmp} = await github.rest.repos.compareCommitsWithBasehead(
+                {...context.repo, basehead: `${process.env.TESTED_SHA}...${head}`});
+              const baselineOnly = cmp.status === 'ahead' && cmp.commits.every(c =>
+                c.author?.login === 'github-actions[bot]' &&
+                c.commit.message.startsWith('chore: update architecture baseline'));
+              const files = cmp.files ?? [];
+              current = baselineOnly && files.length > 0 &&
+                files.every(f => f.filename === '.arcade/baseline.json');
+            }
             core.setOutput('current', current);
             if (!current) core.info('Main advanced; a newer CI run will manage release PRs.');
       - name: Update release PR or tag a merged release
