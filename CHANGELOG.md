@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [0.4.1](https://github.com/arcade-agent/arcade-agent/compare/v0.4.0...v0.4.1) (2026-10-10)
 
+Dependency graphs change for Python and JavaScript/TypeScript projects in this
+release: Python imports no longer link to unrelated entities that share a name,
+imports of module-level variables and of exported object values now produce
+edges, and CommonJS (`require`, `module.exports`) is parsed for the first time.
+Architecture checks report fewer false violations and find real ones they
+missed. Parse caches are invalidated once; expect a one-time jump in drift
+reports and re-baseline after upgrading.
+
 
 ### Features
 
