@@ -1,0 +1,19 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "bootstrap-sha": "576e412dadd6f752f3a5f886201a7e80db93407f",
+  "packages": {
+    ".": {
+      "release-type": "python",
+      "package-name": "arcade-agent",
+      "versioning": "always-bump-minor",
+      "include-component-in-tag": false,
+      "include-v-in-tag": true,
+      "extra-files": [
+        {"type": "generic", "path": "README.md"},
+        {"type": "generic", "path": "actions/analyze/action.yml"},
+        {"type": "generic", "path": ".github/workflows/architecture-analysis-reusable.yml"},
+        {"type": "generic", "path": "examples/workflows/arcade-agent-analysis.yml"}
+      ]
+    }
+  }
+}
