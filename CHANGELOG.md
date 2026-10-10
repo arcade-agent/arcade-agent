@@ -8,10 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [0.4.0](https://github.com/arcade-agent/arcade-agent/compare/v0.3.0...v0.4.0) (2026-10-10)
 
 Recovered architectures change for many projects in this release: parsing now
-finds Python relative imports and Java same-package references, and `pkg`
-recovery no longer splits root packages into one component per member, and
-TypeScript imports configured through `tsconfig` paths and workspaces now
-resolve. Expect a one-time jump in drift reports against a 0.3.0 baseline;
+finds Python relative imports, Java same-package references and TypeScript
+imports configured through `tsconfig` paths and workspaces, and `pkg` recovery
+no longer splits root packages into one component per member. Expect a one-time jump in drift reports against a 0.3.0 baseline;
 re-baseline after upgrading.
 
 ### Added
