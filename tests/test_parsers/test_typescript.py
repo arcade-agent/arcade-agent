@@ -695,3 +695,55 @@ def test_commonjs_index_reexports_and_external_requires(tmp_path):
 
     assert ("services.users.make", "models.user.User", "import") in edges
     assert not [edge for edge in edges if "express" in edge[1]]
+
+
+def test_imports_of_exported_object_values_link_to_their_module(tmp_path):
+    """Regression for #72: ``export const svc = { … }`` is a dependency target."""
+    paths = _write_js(tmp_path, {
+        "repositories/userRepository.ts": (
+            "export const userRepository = { find(id: string) { return id; } };\n"
+        ),
+        "services/userService.ts": (
+            "import { userRepository } from '../repositories/userRepository';\n"
+            "export const userService = { get(id: string) { return userRepository.find(id); } };\n"
+        ),
+        "routes/users.ts": (
+            "import { userService } from '../services/userService';\n"
+            "export function show(id: string) { return userService.get(id); }\n"
+        ),
+    })
+
+    edges = set(TypeScriptParser().parse(paths, tmp_path).to_edge_tuples())
+
+    assert ("routes.users.show", "services.userService", "import") in edges
+    assert ("services.userService", "repositories.userRepository", "import") in edges
+
+
+def test_value_exports_in_files_with_declarations_and_commonjs(tmp_path):
+    paths = _write_js(tmp_path, {
+        "repositories/articles.js": (
+            "class ArticleRepository { all() { return []; } }\n"
+            "const articleRepository = new ArticleRepository();\n"
+            "module.exports = { articleRepository };\n"
+        ),
+        "repositories/tags.ts": (
+            "class TagStore {}\n"
+            "const tagStore = new TagStore();\n"
+            "export { tagStore };\n"
+            "export default tagStore;\n"
+        ),
+        "routes/articles.js": (
+            "const { articleRepository } = require('../repositories/articles');\n"
+            "function index() { return articleRepository.all(); }\n"
+            "module.exports = { index };\n"
+        ),
+        "routes/tags.ts": (
+            "import tags, { tagStore } from '../repositories/tags';\n"
+            "export function list() { return [tags, tagStore]; }\n"
+        ),
+    })
+
+    edges = set(TypeScriptParser().parse(paths, tmp_path).to_edge_tuples())
+
+    assert ("routes.articles.index", "repositories.articles.ArticleRepository", "import") in edges
+    assert ("routes.tags.list", "repositories.tags.TagStore", "import") in edges
