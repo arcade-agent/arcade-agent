@@ -5,27 +5,13 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## Unreleased
-
-### Fixed
-
-- Qualify sparse concern-overload findings when Java/Kotlin/Rust call coverage is
-  incomplete. Graph metadata records collected relations and preserves the
-  declaration through merge, filtering, cache and serialization. A LOW
-  insufficient-coverage warning remains visible; import-cycle detection stays
-  available. Parse caches are invalidated once for the new coverage contract.
-  Malformed or contradictory declarations remain explicitly unknown; merging
-  source sets cannot upgrade unknown coverage to complete. Entirely undeclared
-  legacy graphs retain the existing heuristic contract.
-  Existing Java/Kotlin/Rust smell severities and derived scores can change; regenerate
-  baselines before comparing them with reports from earlier versions.
-## 0.4.0 — 2026-10-07
+## [0.4.0](https://github.com/arcade-agent/arcade-agent/compare/v0.3.0...v0.4.0) (2026-10-10)
 
 Recovered architectures change for many projects in this release: parsing now
-finds Python relative imports and Java same-package references, and `pkg`
-recovery no longer splits root packages into one component per member. Expect
-a one-time jump in drift reports against a 0.3.0 baseline; re-baseline after
-upgrading.
+finds Python relative imports, Java same-package references and TypeScript
+imports configured through `tsconfig` paths and workspaces, and `pkg` recovery
+no longer splits root packages into one component per member. Expect a one-time jump in drift reports against a 0.3.0 baseline;
+re-baseline after upgrading.
 
 ### Added
 
@@ -62,8 +48,27 @@ upgrading.
 - `recover(algorithm="arc"|"limbo")` without the `claude` CLI raises
   `LLMUnavailableError` naming the alternatives instead of `FileNotFoundError`;
   the ARC reference is corrected to Garcia et al., ASE 2011 (#61).
+- TypeScript/JavaScript: imports and re-exports configured through
+  `compilerOptions.baseUrl`/`paths` (including inherited JSONC configs) and
+  npm-compatible workspace packages resolve to local modules (#42).
+- Graph metadata keeps dependency-resolution quality through polyglot merges,
+  filtering, caching and CI JSON, and HTML/Markdown reports show one warning
+  when graph-derived metrics rest on unresolved local imports (#53).
+- TypeScript graphs are no longer qualified because of a catch-all `"*"` paths
+  rule, a package-based `extends` (`@tsconfig/node20`, `@vue/tsconfig`), or
+  imports of `.vue`/`.svelte`/`.astro`/`.graphql` files; tsconfig files with a
+  UTF-8 BOM are read instead of dropped (#65).
+- Sparse concern-overload findings are qualified when Java/Kotlin/Rust call
+  coverage is incomplete; a LOW insufficient-coverage warning stays visible and
+  import-cycle detection stays available. Existing Java/Kotlin/Rust smell
+  severities and derived scores can change (#44).
 - Parse caches are versioned, so results from the old extractors are not
   reused.
+
+### Documentation
+
+- Evidence-backed Java structural analysis case studies (#46).
+
 
 ## 0.3.0 — 2026-08-21
 
