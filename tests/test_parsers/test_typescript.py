@@ -596,3 +596,22 @@ def test_dotted_extensionless_module_name_is_not_filtered_as_an_asset(tmp_path):
     graph = TypeScriptParser().parse(sorted(tmp_path.glob("*.ts")), tmp_path)
     assert ("use.App", "user.model.Model", "import") in set(graph.to_edge_tuples())
     assert _resolution_summary(graph)["resolved_local"] == 1
+
+
+def test_vue_project_with_shared_tsconfig_base_is_not_qualified(tmp_path):
+    (tmp_path / "tsconfig.json").write_text(json.dumps({
+        "extends": "@vue/tsconfig/tsconfig.dom.json",
+        "compilerOptions": {"paths": {"*": ["src/types/*"]}},
+    }))
+    (tmp_path / "App.vue").write_text("<template><div /></template>\n")
+    main = tmp_path / "main.ts"
+    main.write_text(
+        'import { createApp } from "vue"; import App from "./App.vue";\n'
+        'import Widget from "./Widget.svelte";\n'
+        "export class Boot { run() { return createApp(App); } }\n"
+    )
+    graph = TypeScriptParser().parse([main], tmp_path)
+    summary = _resolution_summary(graph)
+    assert summary["unresolved_local"] == 0
+    assert summary["configuration_errors"] == []
+    assert summary["metrics_qualified"] is False
