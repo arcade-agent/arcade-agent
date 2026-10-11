@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [0.4.2](https://github.com/arcade-agent/arcade-agent/compare/v0.4.1...v0.4.2) (2026-10-11)
 
+Node projects that export instance singletons (`module.exports = new Repo()`,
+`export default new Store()`) now get the dependency edges 0.4.1 still missed.
+Parse caches are invalidated once; re-baseline JavaScript/TypeScript projects
+after upgrading.
+
 
 ### Bug Fixes
 
