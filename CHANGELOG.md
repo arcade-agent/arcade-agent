@@ -5,6 +5,13 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.4.2](https://github.com/arcade-agent/arcade-agent/compare/v0.4.1...v0.4.2) (2026-10-11)
+
+
+### Bug Fixes
+
+* **typescript:** resolve modules that export an instance ([#78](https://github.com/arcade-agent/arcade-agent/issues/78)) ([f153b72](https://github.com/arcade-agent/arcade-agent/commit/f153b72cf075a484b9bd25cd72e65b69311fe6b1)), closes [#77](https://github.com/arcade-agent/arcade-agent/issues/77)
+
 ## [0.4.1](https://github.com/arcade-agent/arcade-agent/compare/v0.4.0...v0.4.1) (2026-10-10)
 
 Dependency graphs change for Python and JavaScript/TypeScript projects in this
