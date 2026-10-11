@@ -300,6 +300,15 @@ def _extract_requires(root_node: Node) -> tuple[_Import, ...]:
     return tuple(imports)
 
 
+def _exported_binding(node: Node | None) -> str | None:
+    """Local name an export value stands for: ``X`` for ``X`` and ``new X(…)`` (#77)."""
+    if node is not None and node.type == "new_expression":
+        node = node.child_by_field_name("constructor")
+    if node is not None and node.type == "identifier":
+        return _get_text(node)
+    return None
+
+
 def _is_module_exports(node: Node | None) -> bool:
     return (
         node is not None
@@ -329,22 +338,23 @@ def _extract_commonjs_exports(root_node: Node) -> tuple[list[tuple[str, str]], l
             if left is None or right is None:
                 continue
             if _is_module_exports(left):
-                if right.type == "identifier":
-                    named.append(("default", _get_text(right)))
+                binding = _exported_binding(right)
+                if binding is not None:
+                    named.append(("default", binding))
                 elif right.type == "object":
                     for prop in right.named_children:
                         if prop.type == "shorthand_property_identifier":
                             named.append((_get_text(prop), _get_text(prop)))
                         elif prop.type == "pair":
                             key = prop.child_by_field_name("key")
-                            value = prop.child_by_field_name("value")
-                            if key is not None and value is not None and value.type == "identifier":
-                                named.append((_get_text(key).strip("\"'"), _get_text(value)))
+                            binding = _exported_binding(prop.child_by_field_name("value"))
+                            if key is not None and binding is not None:
+                                named.append((_get_text(key).strip("\"'"), binding))
                 else:
                     source = _require_source(right)
                     if source and is_source_import(source):
                         wildcard_sources.append(source)
-            elif left.type == "member_expression" and right.type == "identifier":
+            elif left.type == "member_expression" and _exported_binding(right) is not None:
                 target = left.child_by_field_name("object")
                 member = left.child_by_field_name("property")
                 exports_object = _is_module_exports(target) or (
@@ -352,7 +362,7 @@ def _extract_commonjs_exports(root_node: Node) -> tuple[list[tuple[str, str]], l
                     and _get_text(target) == "exports"
                 )
                 if exports_object and member is not None:
-                    named.append((_get_text(member), _get_text(right)))
+                    named.append((_get_text(member), _exported_binding(right) or ""))
     return named, wildcard_sources
 
 
@@ -544,11 +554,12 @@ def _extract_file(path: Path, root: Path, parser: Parser) -> _ExtractedFile | No
         if statement.type != "export_statement" or statement.child_by_field_name("source"):
             continue
         value = statement.child_by_field_name("value")
-        if _is_default_export(statement) and value is not None and value.type == "identifier":
-            fqn = f"{module}.{_get_text(value)}" if module else _get_text(value)
+        default_binding = _exported_binding(value) if _is_default_export(statement) else None
+        if default_binding is not None:
+            fqn = f"{module}.{default_binding}" if module else default_binding
             if fqn in entities:
                 exports["default"] = fqn
-            elif _get_text(value) in module_values and representative is not None:
+            elif default_binding in module_values and representative is not None:
                 exports["default"] = representative
         for clause in statement.children:
             if clause.type != "export_clause":

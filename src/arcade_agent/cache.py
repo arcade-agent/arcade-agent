@@ -14,7 +14,7 @@ from arcade_agent.serialization import dict_to_graph, graph_to_dict
 logger = logging.getLogger(__name__)
 
 _CACHE_DIR = ".arcade-cache"
-_GRAPH_CACHE_SCHEMA_VERSION = "9"
+_GRAPH_CACHE_SCHEMA_VERSION = "10"
 
 
 def _cache_dir(project_root: Path) -> Path:

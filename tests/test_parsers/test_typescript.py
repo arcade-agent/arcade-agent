@@ -747,3 +747,47 @@ def test_value_exports_in_files_with_declarations_and_commonjs(tmp_path):
 
     assert ("routes.articles.index", "repositories.articles.ArticleRepository", "import") in edges
     assert ("routes.tags.list", "repositories.tags.TagStore", "import") in edges
+
+
+def test_instance_exports_resolve_to_their_class(tmp_path):
+    """Regression for #77: ``module.exports = new Repo()`` exports ``Repo``."""
+    paths = _write_js(tmp_path, {
+        "repositories/userRepository.js": (
+            "class UserRepository { findById(id) { return id; } }\n"
+            "module.exports = new UserRepository();\n"
+        ),
+        "repositories/articles.js": (
+            "class ArticleRepository { all() { return []; } }\n"
+            "class TagRepository { all() { return []; } }\n"
+            "exports.articles = new ArticleRepository();\n"
+            "module.exports.tags = new TagRepository();\n"
+        ),
+        "repositories/comments.js": (
+            "class CommentRepository { all() { return []; } }\n"
+            "module.exports = { comments: new CommentRepository() };\n"
+        ),
+        "repositories/store.ts": (
+            "class Store { get() { return 1; } }\n"
+            "export default new Store();\n"
+        ),
+        "routes/users.js": (
+            "const userRepository = require('../repositories/userRepository');\n"
+            "const { articles, tags } = require('../repositories/articles');\n"
+            "const { comments } = require('../repositories/comments');\n"
+            "function show(req) { return userRepository.findById(req.id); }\n"
+            "function list() { return [articles.all(), tags.all(), comments.all()]; }\n"
+            "module.exports = { show, list };\n"
+        ),
+        "routes/store.ts": (
+            "import store from '../repositories/store';\n"
+            "export function read() { return store.get(); }\n"
+        ),
+    })
+
+    edges = set(TypeScriptParser().parse(paths, tmp_path).to_edge_tuples())
+
+    assert ("routes.users.show", "repositories.userRepository.UserRepository", "import") in edges
+    assert ("routes.users.list", "repositories.articles.ArticleRepository", "import") in edges
+    assert ("routes.users.list", "repositories.articles.TagRepository", "import") in edges
+    assert ("routes.users.list", "repositories.comments.CommentRepository", "import") in edges
+    assert ("routes.store.read", "repositories.store.Store", "import") in edges
