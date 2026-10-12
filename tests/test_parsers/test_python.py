@@ -428,3 +428,95 @@ def test_annotation_refs_survive_the_incremental_cache(tmp_path):
     assert facts is not None
     assert "TaskRepository" in facts.type_refs["svc.f"]
     assert _facts_from_json(_facts_to_json(facts)).type_refs == facts.type_refs
+
+
+def test_type_checking_import_creates_a_uses_edge(tmp_path):
+    """``if TYPE_CHECKING:`` imports exist only for annotations; they still count."""
+    edges = _annotation_edges(tmp_path, (
+        "from typing import TYPE_CHECKING\n\n"
+        "if TYPE_CHECKING:\n"
+        "    from pkg.store.repo import TaskRepository\n\n"
+        "def f(repo: \"TaskRepository\"):\n"
+        "    return repo.list_all()\n"
+    ))
+
+    assert ("pkg.api.routes.f", "pkg.store.repo.TaskRepository", "uses") in edges
+
+
+def test_qualified_type_checking_import_creates_a_uses_edge(tmp_path):
+    edges = _annotation_edges(tmp_path, (
+        "from __future__ import annotations\n"
+        "import typing\n\n"
+        "if typing.TYPE_CHECKING:\n"
+        "    from pkg.store.repo import TaskRepository\n\n"
+        "def f(repo: TaskRepository) -> None:\n"
+        "    repo.list_all()\n"
+    ))
+
+    assert ("pkg.api.routes.f", "pkg.store.repo.TaskRepository", "uses") in edges
+
+
+def test_type_checking_import_from_a_module_entity_is_a_uses_edge(tmp_path):
+    """A TYPE_CHECKING import never runs, so it is never an ``import`` edge.
+
+    A module entity's refs include its own import statements, which would
+    otherwise make this an ``import`` edge.
+    """
+    edges = _annotation_edges(tmp_path, (
+        "from typing import TYPE_CHECKING\n\n"
+        "if TYPE_CHECKING:\n"
+        "    from pkg.store.repo import TaskRepository\n\n"
+        "default_repo: \"TaskRepository | None\" = None\n"
+    ))
+
+    assert ("pkg.api.routes", "pkg.store.repo.TaskRepository", "uses") in edges
+    assert ("pkg.api.routes", "pkg.store.repo.TaskRepository", "import") not in edges
+
+
+def test_try_except_import_fallbacks_link_to_both_modules(tmp_path):
+    """Either branch may run, so the module depends on both."""
+    paths = _write(tmp_path, {
+        "pkg/store/fast.py": "class Repo:\n    pass\n",
+        "pkg/store/slow.py": "class Repo:\n    pass\n",
+        "pkg/api/routes.py": (
+            "try:\n"
+            "    from pkg.store.fast import Repo\n"
+            "except ImportError:\n"
+            "    from pkg.store.slow import Repo\n\n"
+            "def f():\n"
+            "    return Repo()\n"
+        ),
+    })
+    edges = PythonParser().parse(paths, tmp_path).to_edge_tuples()
+
+    assert ("pkg.api.routes.f", "pkg.store.fast.Repo", "import") in edges
+    assert ("pkg.api.routes.f", "pkg.store.slow.Repo", "import") in edges
+
+
+def test_imports_in_other_module_level_blocks_are_kept(tmp_path):
+    edges = _annotation_edges(tmp_path, (
+        "import sys\n\n"
+        "if sys.version_info >= (3, 11):\n"
+        "    pass\n"
+        "else:\n"
+        "    from pkg.store.repo import TaskRepository\n\n"
+        "def f():\n"
+        "    return TaskRepository()\n"
+    ))
+
+    assert ("pkg.api.routes.f", "pkg.store.repo.TaskRepository", "import") in edges
+
+
+def test_imports_inside_functions_are_not_module_imports(tmp_path):
+    """Function-local imports stay out of scope: they are not file imports."""
+    from arcade_agent.parsers.python import extract_file
+
+    (tmp_path / "svc.py").write_text(
+        "def f():\n"
+        "    import json\n"
+        "    return json\n"
+    )
+    facts = extract_file(tmp_path / "svc.py", tmp_path)
+
+    assert facts is not None
+    assert facts.file_imports == []

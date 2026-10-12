@@ -31,7 +31,7 @@ _SKIP = {"__skip__": True}  # marker: this file contributes no entity
 
 # Bump when per-file extraction changes, so cached facts from an older
 # extractor are not reused for byte-identical files.
-_EXTRACT_VERSION = "4"
+_EXTRACT_VERSION = "5"
 
 
 def file_key(path: Path) -> str:
