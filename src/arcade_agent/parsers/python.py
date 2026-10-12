@@ -1,5 +1,6 @@
 """Python parser using tree-sitter."""
 
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -21,6 +22,10 @@ _ANNOTATION_FIELDS: dict[str, tuple[str, ...]] = {
     "typed_default_parameter": ("type",),
     "typed_parameter": ("type",),
 }
+
+# Names inside a string (forward-reference) annotation: ``"TaskRepository"``,
+# ``"list[models.User]"``.
+_ANNOTATION_NAME = re.compile(r"[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*")
 
 
 def _get_text(node) -> str:
@@ -233,29 +238,47 @@ def _extract_methods(classes: list[dict], module_name: str) -> list[dict]:
     return methods
 
 
-def _extract_referenced_names(node) -> set[str]:
-    """Collect identifier and attribute names *used at runtime* within a node.
+def _add_name(names: set[str], n) -> None:
+    """Add an ``identifier``'s text, or an ``attribute``'s dotted text and head."""
+    names.add(_get_text(n))
+    if n.type == "attribute":
+        for child in n.children:
+            if child.type == "identifier":
+                names.add(_get_text(child))
+                break
 
-    Walks the full AST subtree but skips type annotations (parameter types,
-    return types) because they are not runtime dependencies. This ensures that
-    edges reflect actual usage, not just structural typing.
+
+def _extract_referenced_names(node) -> tuple[set[str], set[str]]:
+    """Collect the names a node uses at runtime and in type annotations.
+
+    Walks the full AST subtree once. Names under a type annotation (parameter
+    and return types, ``x: T`` variable annotations) are kept apart from
+    runtime names, so the linker can tell a type-only dependency (FastAPI's
+    ``repo: Repo = Depends(get_repo)``) from a runtime one. Names inside string
+    (forward-reference) annotations count as annotation names; other string
+    literals are ignored.
+
+    Returns:
+        ``(runtime names, annotation-only names)``; a name used both ways is
+        only in the first set.
     """
     names: set[str] = set()
-    stack = [node]
+    type_names: set[str] = set()
+    stack = [(node, False)]
     while stack:
-        n = stack.pop()
-        if n.type == "identifier":
-            names.add(_get_text(n))
-        elif n.type == "attribute":
-            names.add(_get_text(n))
-            for child in n.children:
-                if child.type == "identifier":
-                    names.add(_get_text(child))
-                    break
+        n, in_annotation = stack.pop()
+        target = type_names if in_annotation else names
+        if n.type in ("identifier", "attribute"):
+            _add_name(target, n)
+        elif n.type == "string_content" and in_annotation:
+            for match in _ANNOTATION_NAME.finditer(_get_text(n)):
+                dotted = match.group()
+                type_names.add(dotted)
+                type_names.add(dotted.split(".", 1)[0])
         elif n.type == "decorator":
             for child in n.children:
                 if child.type in ("identifier", "attribute", "call"):
-                    stack.append(child)
+                    stack.append((child, in_annotation))
             continue
 
         annotation_fields = _ANNOTATION_FIELDS.get(n.type)
@@ -265,11 +288,9 @@ def _extract_referenced_names(node) -> set[str]:
             else ()
         )
         for child in n.children:
-            # Skip type annotation subtrees — they are not runtime deps
-            if child in annotation_nodes:
-                continue
-            stack.append(child)
-    return names
+            stack.append((child, in_annotation or child in annotation_nodes))
+    return names, type_names - names
+
 
 def _extract_module_variables(root_node) -> list[str]:
     """Names bound by top-level assignments (``db = SQLAlchemy()``, ``X: int = 1``)."""
@@ -314,6 +335,7 @@ class FileFacts:
     entities: dict[str, Entity] = field(default_factory=dict)   # fqn -> Entity (this file)
     file_imports: list[dict] = field(default_factory=list)      # shared by entities in the file
     refs: dict[str, set[str]] = field(default_factory=dict)     # fqn -> referenced names
+    type_refs: dict[str, set[str]] = field(default_factory=dict)  # fqn -> annotation-only names
     module_vars: list[str] = field(default_factory=list)        # top-level assignment names
 
 
@@ -358,6 +380,7 @@ def extract_file(py_file: Path, root: Path) -> FileFacts | None:
 
     entities: dict[str, Entity] = {}
     refs_map: dict[str, set[str]] = {}
+    type_refs_map: dict[str, set[str]] = {}
 
     if not all_decls:
         fqn = module_name
@@ -366,7 +389,7 @@ def extract_file(py_file: Path, root: Path) -> FileFacts | None:
             file_path=rel_path, kind="module", language="python",
             imports=[imp["module"] for imp in file_imports],
         )
-        refs_map[fqn] = _extract_referenced_names(root_node)
+        refs_map[fqn], type_refs_map[fqn] = _extract_referenced_names(root_node)
     else:
         for decl in all_decls:
             owner_fqn = decl.get("owner_fqn")
@@ -374,7 +397,9 @@ def extract_file(py_file: Path, root: Path) -> FileFacts | None:
                 fqn = f"{owner_fqn}.{decl['name']}"
             else:
                 fqn = f"{module_name}.{decl['name']}" if module_name else decl["name"]
-            refs = _extract_referenced_names(decl["node"]) if decl.get("node") else set()
+            refs, type_refs = (
+                _extract_referenced_names(decl["node"]) if decl.get("node") else (set(), set())
+            )
             entities[fqn] = Entity(
                 fqn=fqn, name=decl["name"], package=package, file_path=rel_path,
                 kind=decl["kind"], language="python",
@@ -383,9 +408,10 @@ def extract_file(py_file: Path, root: Path) -> FileFacts | None:
                 properties={"owner": owner_fqn} if owner_fqn else {},
             )
             refs_map[fqn] = refs
+            type_refs_map[fqn] = type_refs
 
     return FileFacts(rel_path=rel_path, package=package, entities=entities,
-                     file_imports=file_imports, refs=refs_map,
+                     file_imports=file_imports, refs=refs_map, type_refs=type_refs_map,
                      module_vars=_extract_module_variables(root_node))
 
 
@@ -449,6 +475,7 @@ def link(facts: list[FileFacts]) -> DependencyGraph:
     packages: dict[str, list[str]] = {}
     module_imports: dict[str, list[dict]] = {}
     entity_refs: dict[str, set[str]] = {}
+    entity_type_refs: dict[str, set[str]] = {}
 
     for ff in facts:
         for fqn, ent in ff.entities.items():
@@ -456,6 +483,7 @@ def link(facts: list[FileFacts]) -> DependencyGraph:
             packages.setdefault(ff.package, []).append(fqn)
             module_imports[fqn] = ff.file_imports
             entity_refs[fqn] = ff.refs.get(fqn, set())
+            entity_type_refs[fqn] = ff.type_refs.get(fqn, set())
 
     # Short names of importable (non-method) entities, for package re-exports.
     by_name: dict[str, list[str]] = {}
@@ -519,26 +547,40 @@ def link(facts: list[FileFacts]) -> DependencyGraph:
         matches = [f for f in by_name.get(name, ()) if f.startswith(prefix)]
         return matches[0] if len(matches) == 1 else None
 
+    # An imported name used at runtime is an "import" edge. One named only in
+    # type annotations is a "uses" edge, the relation the Java and Go parsers
+    # give type references: still an architectural dependency (conformance
+    # checks count it), but distinguishable from a runtime import.
     edges: list[Edge] = []
     for fqn, entity in entities.items():
         refs = entity_refs.get(fqn, set())
+        type_refs = entity_type_refs.get(fqn, set())
+        all_refs = refs | type_refs
         imports = module_imports.get(fqn, [])
+
+        def relation(local: str) -> str | None:
+            if not all_refs or local in refs:
+                return "import"
+            return "uses" if local in type_refs else None
+
         for imp_info in imports:
             module = imp_info["module"]
             names = imp_info["names"]
             aliases = imp_info.get("aliases", {})
             if names:
                 for name in names:
-                    if refs and aliases.get(name, name) not in refs:
+                    kind = relation(aliases.get(name, name))
+                    if kind is None:
                         continue
                     target = resolve(module, name)
                     if target is not None:
-                        edges.append(Edge(source=fqn, target=target, relation="import"))
+                        edges.append(Edge(source=fqn, target=target, relation=kind))
             else:
-                if refs and module.split(".")[-1] not in refs:
+                kind = relation(module.split(".")[-1])
+                if kind is None:
                     continue
                 if module in entities:
-                    edges.append(Edge(source=fqn, target=module, relation="import"))
+                    edges.append(Edge(source=fqn, target=module, relation=kind))
         if entity.superclass:
             target = _resolve_superclass(entity, imports, entities, resolve)
             if target is not None:

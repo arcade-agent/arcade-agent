@@ -5,6 +5,22 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+Dependency graphs change for Python projects: a class imported and used only
+in a type annotation now produces a `uses` edge. Parameter and return
+annotations, `x: T` variable annotations and string forward references
+(`"T"`, `Optional["T"]`) all count. This closes the gap where FastAPI-style
+injection (`repo: TaskRepository = Depends(get_repo)`) let a route depend on
+storage without `arcade-guard check` noticing. Runtime uses keep the `import`
+relation, so a name used both ways still yields one edge. Parse caches are
+invalidated once; expect new edges, possibly new violations and shifted
+recovered components, and re-baseline Python projects after upgrading.
+
+### Bug Fixes
+
+* **python:** create dependency edges for type-annotation references
+
 ## [0.4.2](https://github.com/arcade-agent/arcade-agent/compare/v0.4.1...v0.4.2) (2026-10-11)
 
 Node projects that export instance singletons (`module.exports = new Repo()`,
