@@ -58,10 +58,29 @@ Work everywhere agents work.
 - [ ] **21. Claude Agent SDK integration** — Native tool definitions for the Agent SDK.
 - [ ] **22. VS Code / IDE extension** — Expose tools as code actions or inline hints.
 
+## Phase 7 — Decay research into the tool
+
+Bring the thesis findings behind the "When Architecture Decays" guest lecture
+(VinUni COMP5320, October 2026) into arcade-agent and arcade-guard: drift vs
+erosion, smelly-file hotspots, architecture evolution across versions, the full
+ECSA 2017 smell catalog, and the audit trail that student and consulting
+assessments need. Items are in priority order. Each has a tracking issue; none
+is implemented yet.
+
+- [ ] **23. Drift vs erosion in arcade-guard** — `algorithms/conformance.py` maps every entity no spec glob matches to `UNMAPPED` and drops its edges, so `check_architecture` only ever counts them. Report spec coverage (% of entities mapped), list new unmapped modules/directories as *drift* warnings (Perry & Wolf: changes the intent does not cover) and keep forbid/layer violations as *erosion*. Add a `min_coverage` budget next to `no_cycles` / `max_fan_in`.
+- [ ] **24. Architectural hotspot list** — `SmellInstance` carries affected components only. Add file/entity membership so `detect_smells` can emit a ranked list of smelly files (thesis: ~18% of files carry smells and see 1.2–2.4× more issues), and have `context_for_task` and `diff_impact` warn when a task touches one.
+- [ ] **25. `evolution` tool (architecture timeline)** — Run recover + compare across a list of tags/commits and emit per-version a2a, c2c, cvg, smell counts, RCI and TurboMQ as a series (JSON + HTML chart). Reuses `ingest(ref=)` and `compare`. Backs thesis H1 (minor releases change architecture more than major ones), a trended Drift Index for executives, and the data the D1 "does AI accelerate decay" study needs.
+- [ ] **26. Complete the ECSA 2017 smell catalog** — 4 of 11 implemented (Dependency Cycle, Concern Overload, Scattered Parasitic Functionality, Link Overload). Add Unused Component and Unused Interface first (cheap, agent-relevant), then Co-change Coupling (needs git-log mining; `src/` has no git-history code yet), then Duplicate Functionality, Sloppy Delegation, Functionality Overload and Lego Syndrome.
+- [ ] **27. Guard audit log** — Append one JSONL event per `propose_placement` / `preview_impact` / `check_architecture` / `remediate` call (timestamp, agent, inputs, verdict, violations). COMP5320 M5 asks students to log what the agent tried and what the guard caught; ArchAgentBench and consulting assessments need the same record.
+- [ ] **28. `init_spec --from-recovery`** — Draft `architecture.spec.json` from a recovered architecture: components, observed allowed dependencies, suggested forbids from layer order, and optional LLM-proposed component names (`tools/recover.py` derives names from package keys only). Closes the "guard checks hand-written globs, not the recovered architecture" critique and is D3's "flip it" study.
+- [ ] **29. Cycle classification** — In `remediate` and `detect_smells`, label each component cycle as code-level, architecture-level or both (entity SCCs vs component SCCs; `algorithms/cycles.py` already uses `strongly_connected_components`) and say when refactoring code alone cannot break it (Le et al., ICSA 2018).
+- [ ] **30. Housekeeping before COMP5320 M3** — Cut a release carrying the Unreleased Python type-annotation `uses` edges and nested-import fixes (#80, #81) before students install arcade-agent for M3. Reconcile the lecture deck, which still cites the 14+14 pilot (21% → 0%), with the ICSE 2027 demo paper's 130 runs (20/20 → 5/20 → 0/20).
+
 ## Priority Order
 
 | Priority | Items | Rationale |
 |----------|-------|-----------|
 | **Done** | 1–10, 12, 13, 14, 15, 16a, 16a2, 16b, 17, 18 (MVP) | Phases 1–2 + TS/JS & Go & Kotlin & Rust parsers, incremental parsing (Python), `diff_impact`, `context_for_task`, `api_surface`, polyglot merge+relink, `changelog_architecture` |
-| **Now** | 11 | Component ownership |
-| **Then** | 19–22 | Ecosystem breadth (OpenAI / LangChain / Claude SDK / IDE) |
+| **Now** | 30, 11 | Release the pending Python parser fixes before COMP5320 M3; component ownership |
+| **Then** | 23–29 | Phase 7 in listed order: drift vs erosion, hotspots, evolution series, smell catalog, audit log, spec from recovery, cycle classification |
+| **Later** | 19–22 | Ecosystem breadth (OpenAI / LangChain / Claude SDK / IDE) |
