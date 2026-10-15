@@ -319,6 +319,24 @@ def _extract_referenced_names(node) -> tuple[set[str], set[str]]:
                 if child.type in ("identifier", "attribute", "call"):
                     stack.append((child, in_annotation))
             continue
+        elif in_annotation and n.type in ("subscript", "generic_type"):
+            # Literal["GET"] values and Annotated[T, ...] metadata are runtime
+            # expressions, not types: their strings are not forward references.
+            # tree-sitter parses ``Literal[...]`` as generic_type and
+            # ``typing.Literal[...]`` as subscript.
+            if n.type == "subscript":
+                value = n.child_by_field_name("value")
+                args = n.children_by_field_name("subscript")
+            else:
+                value = n.children[0]
+                params = next((c for c in n.children if c.type == "type_parameter"), None)
+                args = [c for c in params.named_children] if params else []
+            head = _get_text(value).rsplit(".", 1)[-1]
+            if head in ("Literal", "Annotated"):
+                stack.append((value, True))
+                for i, arg in enumerate(args):
+                    stack.append((arg, head == "Annotated" and i == 0))
+                continue
 
         annotation_fields = _ANNOTATION_FIELDS.get(n.type)
         annotation_nodes = (
