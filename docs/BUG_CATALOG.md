@@ -98,3 +98,38 @@ prevention rules so the same defect is not rediscovered language by language.
 - First encountered: Rust parser reland, 2026-08-10.
 - **Pattern note:** Applies to any annotation-gated exclusion (Go build tags,
   C/C++ `#ifdef`), not only Rust.
+
+## 5. Configured local imports were classified as external dependencies
+
+- **Symptom:** Workspace and path-alias imports emitted no local edges, while
+  architecture metrics lacked resolution coverage. Asset imports and resolved
+  non-entity symbols could also trigger misleading qualification.
+- **Root cause:** Bare specifiers were treated as external without build
+  configuration. Symbol linking could fall back to unrelated repo-wide names.
+- **Detection:** Pair relative and configured imports to the same source; test
+  solution references, inheritance, assets, barrels and an unrelated same-name
+  class. Keep missing local targets distinct from external packages and unlinked
+  resolved symbols.
+- **Fix:** Resolve only against declared local configuration and source modules;
+  retain bounded resolution diagnostics; qualify metrics on unresolved imports
+  or configuration failures. Preserve the metadata through graph unions,
+  filtering, serialization and both sides of comparison reports.
+- **Prevention:** Verify module resolution and symbol linking separately, and
+  keep clean asset/type-alias controls beside missing-target regressions.
+- First tracked: TypeScript issue #41.
+
+## 6. Parser upgrades reused graphs from earlier semantics
+
+- **Symptom:** Default cached parsing kept a phantom Java cycle after an upgrade,
+  even though parsing without cache removed it. Edits to inherited TypeScript
+  configs could similarly leave the source graph stale.
+- **Root cause:** Cache identity omitted parser semantics and transitive resolver
+  inputs; unchanged source paths and mtimes retained the previous fingerprint.
+- **Detection:** Seed the previous cache identity and graph while preserving source
+  mtimes, then parse with default caching. Change an inherited config without editing
+  source. A warm-cache control verifies that current graphs are still reused.
+- **Fix:** Version graph cache identity and track in-repository resolver inputs.
+  Keep the newest schema version when combining changes to parser or graph metadata.
+- **Prevention:** Treat parser upgrades, graph metadata changes, source-selection flags
+  and non-source resolution inputs as cache contract changes.
+- First tracked: Java issue #47 / PR #52 and TypeScript PR #42 review.

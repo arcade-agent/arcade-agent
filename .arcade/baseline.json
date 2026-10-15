@@ -1,6 +1,6 @@
 {
   "algorithm": "pkg",
-  "rationale": "Package-based grouping (depth=1 after common prefix 'arcade_agent') with dependency-affinity facade refinement (12 entities reassigned).",
+  "rationale": "Package-based grouping (depth=1 after common prefix 'arcade_agent') with dependency-affinity facade refinement (20 entities reassigned).",
   "metadata": {
     "analysis_profile": "arcade-self-dogfood-v1"
   },
@@ -25,11 +25,9 @@
         "arcade_agent.algorithms.conformance.DependencyRule",
         "arcade_agent.algorithms.conformance.Violation",
         "arcade_agent.algorithms.conformance.check_conformance",
-        "arcade_agent.algorithms.conformance.component_edges",
         "arcade_agent.algorithms.conformance.dependency_problems",
         "arcade_agent.algorithms.conformance.glob_to_regex",
         "arcade_agent.algorithms.conformance.load_spec",
-        "arcade_agent.algorithms.conformance.map_entities",
         "arcade_agent.algorithms.conformance.propose_placement",
         "arcade_agent.algorithms.conformance.verdict",
         "arcade_agent.algorithms.coupling.compute_all_metrics",
@@ -66,12 +64,12 @@
         "arcade_agent.algorithms.smells.SmellType",
         "arcade_agent.algorithms.traversal.adjacency_with_relations",
         "arcade_agent.algorithms.traversal.walk_cone",
+        "arcade_agent.exporters.html.AlgorithmResult",
         "arcade_agent.models.architecture",
         "arcade_agent.models.metrics",
         "arcade_agent.models.smells",
-        "arcade_agent.serialization.dict_to_architecture",
-        "arcade_agent.tools.dependency_cone.dependency_cone",
-        "arcade_agent.tools.diff_impact.diff_impact"
+        "arcade_agent.serialization.architecture_to_dict",
+        "arcade_agent.serialization.dict_to_architecture"
       ]
     },
     {
@@ -120,7 +118,6 @@
         "arcade_agent.ci.compare_baseline.main",
         "arcade_agent.exporters.changelog_md.render_changelog_markdown",
         "arcade_agent.exporters.dot.export_dot",
-        "arcade_agent.exporters.html.AlgorithmResult",
         "arcade_agent.exporters.html.build_snapshot_mermaid",
         "arcade_agent.exporters.html.export_comparison_html",
         "arcade_agent.exporters.html.export_evolution_html",
@@ -128,7 +125,6 @@
         "arcade_agent.exporters.json.build_component_summary",
         "arcade_agent.exporters.json.build_graph_summary",
         "arcade_agent.exporters.json.export_json",
-        "arcade_agent.exporters.json.summarize_entity_kinds",
         "arcade_agent.exporters.mermaid.build_mermaid_diagram",
         "arcade_agent.exporters.mermaid.mermaid_label_text",
         "arcade_agent.exporters.mermaid.mermaid_node_id",
@@ -147,6 +143,9 @@
       "name": "Parsers",
       "responsibility": "Entities in parsers",
       "entities": [
+        "arcade_agent.algorithms.conformance.component_edges",
+        "arcade_agent.algorithms.conformance.map_entities",
+        "arcade_agent.exporters.json.summarize_entity_kinds",
         "arcade_agent.models.graph",
         "arcade_agent.parsers.base.LanguageParser",
         "arcade_agent.parsers.base.detect_language",
@@ -186,20 +185,22 @@
         "arcade_agent.parsers.typescript_resolution._CompilerConfig",
         "arcade_agent.parsers.typescript_resolution._PathMapping",
         "arcade_agent.parsers.typescript_resolution._WorkspacePackage",
-        "arcade_agent.parsers.typescript_resolution.is_source_import"
+        "arcade_agent.parsers.typescript_resolution.is_source_import",
+        "arcade_agent.serialization.load_graph",
+        "arcade_agent.serialization.save_graph",
+        "arcade_agent.tools.api_surface.api_surface",
+        "arcade_agent.tools.guard.check_architecture",
+        "arcade_agent.tools.guard.remediate"
       ]
     },
     {
       "name": "Serialization",
       "responsibility": "Entities in serialization",
       "entities": [
-        "arcade_agent.serialization.architecture_to_dict",
         "arcade_agent.serialization.dict_to_graph",
         "arcade_agent.serialization.graph_to_dict",
         "arcade_agent.serialization.load_architecture",
-        "arcade_agent.serialization.load_graph",
         "arcade_agent.serialization.save_architecture",
-        "arcade_agent.serialization.save_graph",
         "arcade_agent.serialization.serialize_result"
       ]
     },
@@ -228,20 +229,19 @@
         "arcade_agent.tools.analyze.AnalysisResult",
         "arcade_agent.tools.analyze.PartialAnalysisError",
         "arcade_agent.tools.analyze.analyze",
-        "arcade_agent.tools.api_surface.api_surface",
         "arcade_agent.tools.changelog_architecture.changelog_architecture",
         "arcade_agent.tools.compare.compare",
         "arcade_agent.tools.compute_metrics.compute_metrics",
         "arcade_agent.tools.context_for_task.context_for_task",
+        "arcade_agent.tools.dependency_cone.dependency_cone",
         "arcade_agent.tools.detect_smells.detect_smells",
+        "arcade_agent.tools.diff_impact.diff_impact",
         "arcade_agent.tools.explain_component.explain_component",
         "arcade_agent.tools.find_relevant.find_relevant",
-        "arcade_agent.tools.guard.check_architecture",
         "arcade_agent.tools.guard.find_spec",
         "arcade_agent.tools.guard.init_spec",
         "arcade_agent.tools.guard.preview_impact",
         "arcade_agent.tools.guard.propose_placement",
-        "arcade_agent.tools.guard.remediate",
         "arcade_agent.tools.query.query",
         "arcade_agent.tools.recover.recover",
         "arcade_agent.tools.registry.ToolDef",
@@ -253,19 +253,19 @@
     }
   ],
   "metrics": {
-    "RCI": 0.5762,
-    "TurboMQ": 2.8441,
-    "BasicMQ": 0.2586,
-    "IntraConnectivity": 0.0136,
-    "InterConnectivity": 0.0402,
+    "RCI": 0.4599,
+    "TurboMQ": 2.176,
+    "BasicMQ": 0.1978,
+    "IntraConnectivity": 0.0147,
+    "InterConnectivity": 0.0368,
     "TwoWayPairRatio": 0.0,
-    "DependencyHealth": 0.9779,
-    "ComponentBalance": 0.4333,
-    "HubBalance": 0.4,
-    "BoundaryClarity": 0.9455,
-    "DependencyDistribution": 0.6234,
-    "SmellDiscipline": 0.9455,
-    "PrincipleAlignmentScore": 0.8368,
-    "BalancedArchitectureScore": 0.6196
+    "DependencyHealth": 0.9798,
+    "ComponentBalance": 0.4172,
+    "HubBalance": 0.3,
+    "BoundaryClarity": 0.9182,
+    "DependencyDistribution": 0.6409,
+    "SmellDiscipline": 0.8909,
+    "PrincipleAlignmentScore": 0.8175,
+    "BalancedArchitectureScore": 0.5645
   }
 }

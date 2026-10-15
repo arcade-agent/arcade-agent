@@ -1,3 +1,5 @@
+<!-- mcp-name: io.github.arcade-agent/arcade-mcp -->
+
 # arcade-agent
 
 [![CI](https://github.com/arcade-agent/arcade-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/arcade-agent/arcade-agent/actions/workflows/ci.yml)
@@ -150,6 +152,20 @@ drops `#[cfg(test)]` items — including `cfg(all(test, ...))` / `cfg(any(test, 
 inner `#![cfg(test)]` files and module bodies, the file behind an out-of-line
 `#[cfg(test)] mod helpers;`, and `#[cfg(test)] use ...` dev-dependency imports.
 Pass `exclude_tests=False` to `ingest`/`parse`/`analyze` to keep them.
+
+TypeScript/JavaScript resolution uses `baseUrl`/`paths`, inherited JSONC configs,
+scoped solution references, declared npm workspace manifests and source re-exports.
+`DependencyGraph.metadata["dependency_resolution"]["typescript"]` records local,
+external and unresolved import counts, linked/unlinked counts, rates and diagnostics.
+Explicit asset imports are excluded from source coverage. Unlinked resolved imports,
+such as type aliases and constants, remain informational; unresolved local imports or
+configuration diagnostics qualify graph-derived metrics without changing their formulas.
+HTML and CI comparisons retain that context for both baseline and current snapshots.
+
+This resolver does not implement all compiler resolution modes. Dynamic `import()`,
+custom resolver plugins and external package-based config inheritance
+are outside its scope. Unsupported `${configDir}` and package `#imports` inputs produce
+diagnostics. See the CHANGELOG migration note before replacing TypeScript baselines.
 
 ## Example: ARCADE Core
 
