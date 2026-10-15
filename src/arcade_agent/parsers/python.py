@@ -74,13 +74,23 @@ def _imported_name(node) -> tuple[str, str]:
 _IMPORT_CONTAINERS = frozenset({
     "if_statement", "elif_clause", "else_clause", "try_statement", "except_clause",
     "except_group_clause", "finally_clause", "with_statement", "block",
+    "match_statement", "case_clause",
 })
 
 
 def _is_type_checking(condition) -> bool:
-    """True for ``TYPE_CHECKING`` and ``typing.TYPE_CHECKING`` (any qualifier)."""
-    text = _get_text(condition)
-    return text == "TYPE_CHECKING" or text.endswith(".TYPE_CHECKING")
+    """True for ``TYPE_CHECKING`` and ``typing.TYPE_CHECKING`` (any qualifier).
+
+    Matches the condition node itself, so ``not typing.TYPE_CHECKING`` (a
+    ``not_operator``) is not mistaken for a type-checking guard.
+    """
+    if condition is None:
+        return False
+    if condition.type == "identifier":
+        return _get_text(condition) == "TYPE_CHECKING"
+    if condition.type == "attribute":
+        return _get_text(condition.child_by_field_name("attribute")) == "TYPE_CHECKING"
+    return False
 
 
 def _extract_imports(root_node) -> list[dict]:
@@ -112,7 +122,14 @@ def _extract_imports(root_node) -> list[dict]:
                 if consequence is not None:
                     visit(consequence, guarded)
                 for alternative in child.children_by_field_name("alternative"):
-                    visit(alternative, type_only)
+                    if alternative.type == "elif_clause" and _is_type_checking(
+                        alternative.child_by_field_name("condition")
+                    ):
+                        branch = alternative.child_by_field_name("consequence")
+                        if branch is not None:
+                            visit(branch, True)
+                    else:
+                        visit(alternative, type_only)
             elif child.type in _IMPORT_CONTAINERS:
                 visit(child, type_only)
 

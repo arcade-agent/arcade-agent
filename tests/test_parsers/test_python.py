@@ -544,3 +544,47 @@ def test_imports_inside_functions_are_not_module_imports(tmp_path):
 
     assert facts is not None
     assert facts.file_imports == []
+
+
+def test_negated_type_checking_import_is_a_runtime_import(tmp_path):
+    """``if not typing.TYPE_CHECKING:`` runs at import time; it is not type-only."""
+    edges = _annotation_edges(tmp_path, (
+        "import typing\n\n"
+        "if not typing.TYPE_CHECKING:\n"
+        "    from pkg.store.repo import TaskRepository\n\n"
+        "def f():\n"
+        "    return TaskRepository()\n"
+    ))
+
+    assert ("pkg.api.routes.f", "pkg.store.repo.TaskRepository", "import") in edges
+    assert ("pkg.api.routes.f", "pkg.store.repo.TaskRepository", "uses") not in edges
+
+
+def test_elif_type_checking_import_creates_a_uses_edge(tmp_path):
+    edges = _annotation_edges(tmp_path, (
+        "import sys\n"
+        "import typing\n\n"
+        "if sys.version_info < (3, 0):\n"
+        "    pass\n"
+        "elif typing.TYPE_CHECKING:\n"
+        "    from pkg.store.repo import TaskRepository\n\n"
+        "default_repo: \"TaskRepository | None\" = None\n"
+    ))
+
+    assert ("pkg.api.routes", "pkg.store.repo.TaskRepository", "uses") in edges
+    assert ("pkg.api.routes", "pkg.store.repo.TaskRepository", "import") not in edges
+
+
+def test_imports_in_match_blocks_are_kept(tmp_path):
+    edges = _annotation_edges(tmp_path, (
+        "import sys\n\n"
+        "match sys.platform:\n"
+        "    case \"linux\":\n"
+        "        from pkg.store.repo import TaskRepository\n"
+        "    case _:\n"
+        "        from pkg.store.repo import TaskRepository\n\n"
+        "def f():\n"
+        "    return TaskRepository()\n"
+    ))
+
+    assert ("pkg.api.routes.f", "pkg.store.repo.TaskRepository", "import") in edges
