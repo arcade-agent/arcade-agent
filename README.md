@@ -1,3 +1,5 @@
+<!-- mcp-name: io.github.arcade-agent/arcade-mcp -->
+
 # arcade-agent
 
 [![CI](https://github.com/arcade-agent/arcade-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/arcade-agent/arcade-agent/actions/workflows/ci.yml)
