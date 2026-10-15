@@ -79,7 +79,7 @@ def test_python_parser_keeps_decorator_edges(tmp_path):
     assert ("pkg.service.run", "pkg.registry.tool", "import") in graph.to_edge_tuples()
 
 
-def test_python_parser_skips_annotation_only_import_edges(tmp_path):
+def test_python_parser_marks_annotation_only_edges_as_uses(tmp_path):
     package_dir = tmp_path / "pkg"
     package_dir.mkdir()
 
@@ -99,7 +99,9 @@ def test_python_parser_skips_annotation_only_import_edges(tmp_path):
     edges = graph.to_edge_tuples()
 
     assert ("pkg.service.annotation_only", "pkg.models.User", "import") not in edges
+    assert ("pkg.service.annotation_only", "pkg.models.User", "uses") in edges
     assert ("pkg.service.runtime_use", "pkg.models.User", "import") in edges
+    assert ("pkg.service.runtime_use", "pkg.models.User", "uses") not in edges
 
 
 def _write(root, files):
@@ -320,3 +322,133 @@ def test_module_variables_survive_the_incremental_cache(tmp_path):
 
     assert facts is not None
     assert _facts_from_json(_facts_to_json(facts)).module_vars == ["db"]
+
+
+def _annotation_edges(tmp_path, routes_src):
+    paths = _write(tmp_path, {
+        "pkg/store/repo.py": "class TaskRepository:\n    def list_all(self):\n        return []\n",
+        "pkg/api/routes.py": routes_src,
+    })
+    return PythonParser().parse(paths, tmp_path).to_edge_tuples()
+
+
+def test_parameter_annotation_creates_a_uses_edge(tmp_path):
+    """FastAPI ``Depends`` injection names the dependency only in the annotation."""
+    edges = _annotation_edges(tmp_path, (
+        "from fastapi import Depends\n"
+        "from pkg.store.repo import TaskRepository\n\n"
+        "def get_repo():\n"
+        "    return None\n\n"
+        "def f(repo: TaskRepository = Depends(get_repo)):\n"
+        "    return repo.list_all()\n\n"
+        "def g(repo: TaskRepository):\n"
+        "    return repo\n"
+    ))
+
+    assert ("pkg.api.routes.f", "pkg.store.repo.TaskRepository", "uses") in edges
+    assert ("pkg.api.routes.g", "pkg.store.repo.TaskRepository", "uses") in edges
+
+
+def test_return_annotation_creates_a_uses_edge(tmp_path):
+    edges = _annotation_edges(tmp_path, (
+        "from pkg.store.repo import TaskRepository\n\n"
+        "def make() -> TaskRepository:\n"
+        "    return build()\n"
+    ))
+
+    assert ("pkg.api.routes.make", "pkg.store.repo.TaskRepository", "uses") in edges
+
+
+def test_variable_annotation_creates_a_uses_edge(tmp_path):
+    edges = _annotation_edges(tmp_path, (
+        "from pkg.store.repo import TaskRepository\n\n"
+        "class Service:\n"
+        "    repo: TaskRepository\n\n"
+        "def run(factory):\n"
+        "    repo: TaskRepository = factory()\n"
+        "    return repo\n"
+    ))
+
+    assert ("pkg.api.routes.Service", "pkg.store.repo.TaskRepository", "uses") in edges
+    assert ("pkg.api.routes.run", "pkg.store.repo.TaskRepository", "uses") in edges
+
+
+def test_module_level_variable_annotation_creates_an_edge(tmp_path):
+    edges = _annotation_edges(tmp_path, (
+        "from pkg.store.repo import TaskRepository\n\n"
+        "repo: TaskRepository = make()\n"
+    ))
+
+    # A module entity's refs include its own import statements, so this was
+    # already an "import" edge; the annotation must not drop it.
+    assert ("pkg.api.routes", "pkg.store.repo.TaskRepository", "import") in edges
+
+
+def test_nested_annotation_creates_a_uses_edge(tmp_path):
+    edges = _annotation_edges(tmp_path, (
+        "from pkg.store.repo import TaskRepository\n\n"
+        "def nested(repos: list[TaskRepository] | None):\n"
+        "    return repos\n"
+    ))
+
+    assert ("pkg.api.routes.nested", "pkg.store.repo.TaskRepository", "uses") in edges
+
+
+def test_string_forward_reference_annotation_creates_a_uses_edge(tmp_path):
+    edges = _annotation_edges(tmp_path, (
+        "from typing import Optional\n"
+        "from pkg.store.repo import TaskRepository\n\n"
+        "def quoted(repo: \"TaskRepository\"):\n"
+        "    return repo\n\n"
+        "def inner(repo: Optional[\"TaskRepository\"]) -> \"list[TaskRepository]\":\n"
+        "    return [repo]\n"
+    ))
+
+    assert ("pkg.api.routes.quoted", "pkg.store.repo.TaskRepository", "uses") in edges
+    assert ("pkg.api.routes.inner", "pkg.store.repo.TaskRepository", "uses") in edges
+
+
+def test_literal_values_and_annotated_metadata_are_not_forward_references(tmp_path):
+    edges = _annotation_edges(tmp_path, (
+        "import typing\n"
+        "from typing import Annotated, Literal\n"
+        "from fastapi import Depends\n"
+        "from pkg.store.repo import TaskRepository\n\n"
+        "def get_repo():\n"
+        "    return None\n\n"
+        "def lit(kind: Literal[\"TaskRepository\"]):\n"
+        "    return kind\n\n"
+        "def qualified(kind: typing.Literal[\"TaskRepository\"]):\n"
+        "    return kind\n\n"
+        "def doc(n: Annotated[int, \"a TaskRepository id\"]):\n"
+        "    return n\n\n"
+        "def injected(repo: Annotated[TaskRepository, Depends(get_repo)]):\n"
+        "    return repo\n"
+    ))
+
+    for fn in ("lit", "qualified", "doc"):
+        assert not [e for e in edges if e[0] == f"pkg.api.routes.{fn}"], fn
+    # Annotated's first argument is still the type.
+    assert ("pkg.api.routes.injected", "pkg.store.repo.TaskRepository", "uses") in edges
+
+
+def test_string_literals_outside_annotations_do_not_create_edges(tmp_path):
+    edges = _annotation_edges(tmp_path, (
+        "from pkg.store.repo import TaskRepository\n\n"
+        "def message():\n"
+        "    return \"TaskRepository\"\n"
+    ))
+
+    assert not [e for e in edges if e[0] == "pkg.api.routes.message"]
+
+
+def test_annotation_refs_survive_the_incremental_cache(tmp_path):
+    from arcade_agent.incremental import _facts_from_json, _facts_to_json
+    from arcade_agent.parsers.python import extract_file
+
+    (tmp_path / "svc.py").write_text("def f(repo: TaskRepository):\n    return repo\n")
+    facts = extract_file(tmp_path / "svc.py", tmp_path)
+
+    assert facts is not None
+    assert "TaskRepository" in facts.type_refs["svc.f"]
+    assert _facts_from_json(_facts_to_json(facts)).type_refs == facts.type_refs

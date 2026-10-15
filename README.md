@@ -336,8 +336,9 @@ arcade-guard check . --fail-on error             # exit 1 on FAIL
 Verdicts are deterministic: entities are assigned to components by path, not by
 clustering, and `preview_impact` and `check_architecture` evaluate the same
 rule function, so they cannot disagree. Conformance is computed over
-*referenced* dependencies: an import that is never used, or used only in a type
-annotation, does not count as an edge.
+*referenced* dependencies: an import that is never used does not count as an
+edge. In Python, a class named only in a type annotation (for example FastAPI's
+`repo: Repo = Depends(get_repo)`) counts, as a `uses` edge.
 
 ## LLM-Powered Analysis
 

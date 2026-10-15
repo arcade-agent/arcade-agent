@@ -14,6 +14,15 @@ by this threshold). ``min_entities`` therefore moved from 3 to 8.
 ``test_low_threshold_reports_algorithms_tools_as_split_and_merge`` and
 ``test_default_threshold_treats_algorithms_tools_move_as_stable`` below are
 the durable record of this measurement.
+
+Re-measured when the Python parser started emitting ``uses`` edges for
+type-annotation references: the extra edges change the ``pkg`` recovery of
+both tags, and the 4-entity ``Algorithms`` -> ``Tools`` move no longer
+appears. What remains is 2 entities flowing from ``Algorithms`` (55) into the
+7-entity ``Serialization`` component, 28% of the smaller side, so
+``min_share`` reports it as a split and a merge at any ``min_entities``. The
+two tests below pin that shape, and pin that ``min_entities=8`` alone
+(``min_share=1.0``) still keeps the small move stable.
 """
 
 from pathlib import Path
@@ -100,13 +109,12 @@ def test_changelog_between_real_releases():
     not (_has_tag("v0.1.0") and _has_tag("v0.1.1")),
     reason="requires the v0.1.0 and v0.1.1 tags",
 )
-def test_low_threshold_reports_algorithms_tools_as_split_and_merge():
-    """At min_entities=3, the Algorithms/Tools refactor reads as split+merge.
+def test_low_threshold_reports_algorithms_serialization_as_split_and_merge():
+    """At min_entities=3, the Algorithms/Serialization move reads as split+merge.
 
-    This is the datapoint that motivated raising the default to 8 (see the
-    module docstring): explicitly passing the old default reproduces the
-    over-eager classification so the measurement stays pinned even after the
-    library default changes.
+    Originally the Algorithms/Tools datapoint that motivated raising the
+    default to 8 (see the module docstring); with annotation edges the
+    over-eager classification shows up on Algorithms/Serialization instead.
     """
     repo_a = ingest(str(REPO_ROOT), language="python", ref="v0.1.0")
     repo_b = ingest(str(REPO_ROOT), language="python", ref="v0.1.1")
@@ -125,18 +133,18 @@ def test_low_threshold_reports_algorithms_tools_as_split_and_merge():
         assert components["split"] == [
             {
                 "from": "Algorithms",
-                "into": ["Algorithms", "Tools"],
-                "entities": {"Algorithms": 60, "Tools": 4},
+                "into": ["Algorithms", "Serialization"],
+                "entities": {"Algorithms": 55, "Serialization": 2},
             }
         ]
         assert components["merged"] == [
             {
-                "into": "Tools",
-                "from": ["Algorithms", "Tools"],
-                "entities": {"Algorithms": 4, "Tools": 41},
+                "into": "Serialization",
+                "from": ["Algorithms", "Serialization"],
+                "entities": {"Algorithms": 2, "Serialization": 7},
             }
         ]
-        assert result["summary"]["shifts"] == 6
+        assert result["summary"]["shifts"] == 4
     finally:
         repo_a.cleanup()
         repo_b.cleanup()
@@ -146,15 +154,16 @@ def test_low_threshold_reports_algorithms_tools_as_split_and_merge():
     not (_has_tag("v0.1.0") and _has_tag("v0.1.1")),
     reason="requires the v0.1.0 and v0.1.1 tags",
 )
-def test_default_threshold_treats_algorithms_tools_move_as_stable():
+def test_min_entities_default_treats_small_move_as_stable():
     """Pins the tuning decision behind the min_entities=8 default.
 
-    At the default threshold, the same Algorithms/Tools refactor between
-    v0.1.0 and v0.1.1 no longer reports a split or a merge -- both
-    components read as stable, with the entity movement still visible as a
-    responsibility shift (shifts=6, same as at the lower threshold: no
-    information is lost, only recategorised). This test fails if someone
-    lowers the default without re-checking this datapoint.
+    With ``min_share`` disabled, the 2-entity Algorithms/Serialization move
+    between v0.1.0 and v0.1.1 reports no split or merge at the default
+    threshold -- both components read as stable, with the movement still
+    visible as responsibility shifts (shifts=4, same as at the lower
+    threshold). This test fails if someone lowers the default without
+    re-checking this datapoint. At the default ``min_share`` the move is 28%
+    of ``Serialization`` and is reported (see the module docstring).
     """
     repo_a = ingest(str(REPO_ROOT), language="python", ref="v0.1.0")
     repo_b = ingest(str(REPO_ROOT), language="python", ref="v0.1.1")
@@ -165,15 +174,16 @@ def test_default_threshold_treats_algorithms_tools_move_as_stable():
         arch_b = recover(graph_b, algorithm="pkg")
 
         result = changelog_architecture(
-            arch_a, graph_a, arch_b, graph_b, ref_a="v0.1.0", ref_b="v0.1.1"
+            arch_a, graph_a, arch_b, graph_b, ref_a="v0.1.0", ref_b="v0.1.1",
+            min_share=1.0,
         )
 
         components = result["components"]
         assert components["split"] == []
         assert components["merged"] == []
         assert "Algorithms" in components["stable"]
-        assert "Tools" in components["stable"]
-        assert result["summary"]["shifts"] == 6
+        assert "Serialization" in components["stable"]
+        assert result["summary"]["shifts"] == 4
     finally:
         repo_a.cleanup()
         repo_b.cleanup()
