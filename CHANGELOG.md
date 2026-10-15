@@ -17,9 +17,17 @@ relation, so a name used both ways still yields one edge. Parse caches are
 invalidated once; expect new edges, possibly new violations and shifted
 recovered components, and re-baseline Python projects after upgrading.
 
+Imports inside module-level blocks now count too. An `if TYPE_CHECKING:` (or
+`if typing.TYPE_CHECKING:`) import used in a quoted or postponed annotation
+yields a `uses` edge, never `import`, since it does not run. Imports in other
+top-level `if`/`else`, `try`/`except ImportError` fallbacks and `with` blocks
+yield edges to every branch's target, as any of them may run. Imports inside
+functions and classes are still not file imports.
+
 ### Bug Fixes
 
 * **python:** create dependency edges for type-annotation references
+* **python:** keep imports nested in module-level `if TYPE_CHECKING`, `if`, `try` and `with` blocks
 
 ## [0.4.2](https://github.com/arcade-agent/arcade-agent/compare/v0.4.1...v0.4.2) (2026-10-11)
 

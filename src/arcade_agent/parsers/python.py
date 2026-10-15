@@ -68,49 +68,105 @@ def _imported_name(node) -> tuple[str, str]:
     return text, text
 
 
+# Module-scope statements whose bodies run at import time. Imports nested in
+# them (``if TYPE_CHECKING:``, ``try: ... except ImportError:`` fallbacks,
+# version checks) are file imports; function and class bodies are not entered.
+_IMPORT_CONTAINERS = frozenset({
+    "if_statement", "elif_clause", "else_clause", "try_statement", "except_clause",
+    "except_group_clause", "finally_clause", "with_statement", "block",
+    "match_statement", "case_clause",
+})
+
+
+def _is_type_checking(condition) -> bool:
+    """True for ``TYPE_CHECKING`` and ``typing.TYPE_CHECKING`` (any qualifier).
+
+    Matches the condition node itself, so ``not typing.TYPE_CHECKING`` (a
+    ``not_operator``) is not mistaken for a type-checking guard.
+    """
+    if condition is None:
+        return False
+    if condition.type == "identifier":
+        return _get_text(condition) == "TYPE_CHECKING"
+    if condition.type == "attribute":
+        return _get_text(condition.child_by_field_name("attribute")) == "TYPE_CHECKING"
+    return False
+
+
 def _extract_imports(root_node) -> list[dict]:
-    """Extract import statements from a Python file.
+    """Extract the module-scope import statements of a Python file.
 
     Returns dicts with ``module`` (as written, without leading dots), ``level``
     (number of leading dots; 0 for absolute imports), ``names`` (imported names)
     and ``aliases`` (name -> local alias, only for ``as`` imports). Relative
     modules are resolved against the importing file's package by
-    :func:`_resolve_relative_imports`.
+    :func:`_resolve_relative_imports`. Imports under ``if TYPE_CHECKING:`` also
+    carry ``type_only: True``: they never run, so the linker makes them ``uses``
+    edges.
     """
-    imports = []
+    imports: list[dict] = []
 
-    for child in root_node.children:
-        if child.type == "import_statement":
-            # import foo, import foo.bar, import foo as f
-            for sub in child.children:
-                if sub.type in ("dotted_name", "aliased_import"):
-                    module, _alias = _imported_name(sub)
-                    imports.append({"module": module, "level": 0, "names": [], "aliases": {}})
+    def visit(node, type_only: bool) -> None:
+        for child in node.children:
+            if child.type == "import_statement":
+                # import foo, import foo.bar, import foo as f
+                for sub in child.children:
+                    if sub.type in ("dotted_name", "aliased_import"):
+                        module, _alias = _imported_name(sub)
+                        imports.append(_import_info(module, 0, [], {}, type_only))
+            elif child.type == "import_from_statement":
+                imports.append(_from_import_info(child, type_only))
+            elif child.type == "if_statement":
+                guarded = type_only or _is_type_checking(child.child_by_field_name("condition"))
+                consequence = child.child_by_field_name("consequence")
+                if consequence is not None:
+                    visit(consequence, guarded)
+                for alternative in child.children_by_field_name("alternative"):
+                    if alternative.type == "elif_clause" and _is_type_checking(
+                        alternative.child_by_field_name("condition")
+                    ):
+                        branch = alternative.child_by_field_name("consequence")
+                        if branch is not None:
+                            visit(branch, True)
+                    else:
+                        visit(alternative, type_only)
+            elif child.type in _IMPORT_CONTAINERS:
+                visit(child, type_only)
 
-        elif child.type == "import_from_statement":
-            # from foo import bar, baz as qux; from ..foo import bar; from . import bar
-            module_node = child.child_by_field_name("module_name")
-            module, level = "", 0
-            if module_node is not None and module_node.type == "relative_import":
-                for part in module_node.children:
-                    if part.type == "import_prefix":
-                        level = len(_get_text(part).strip())
-                    elif part.type == "dotted_name":
-                        module = _get_text(part)
-            elif module_node is not None:
-                module = _get_text(module_node)
-            names: list[str] = []
-            aliases: dict[str, str] = {}
-            for name_node in child.children_by_field_name("name"):
-                name, alias = _imported_name(name_node)
-                if name:
-                    names.append(name)
-                    if alias != name:
-                        aliases[name] = alias
-            imports.append({"module": module, "level": level, "names": names,
-                            "aliases": aliases})
-
+    visit(root_node, False)
     return imports
+
+
+def _import_info(
+    module: str, level: int, names: list[str], aliases: dict[str, str], type_only: bool
+) -> dict:
+    info = {"module": module, "level": level, "names": names, "aliases": aliases}
+    if type_only:
+        info["type_only"] = True
+    return info
+
+
+def _from_import_info(node, type_only: bool) -> dict:
+    """``from foo import bar, baz as qux``; ``from ..foo import bar``; ``from . import bar``."""
+    module_node = node.child_by_field_name("module_name")
+    module, level = "", 0
+    if module_node is not None and module_node.type == "relative_import":
+        for part in module_node.children:
+            if part.type == "import_prefix":
+                level = len(_get_text(part).strip())
+            elif part.type == "dotted_name":
+                module = _get_text(part)
+    elif module_node is not None:
+        module = _get_text(module_node)
+    names: list[str] = []
+    aliases: dict[str, str] = {}
+    for name_node in node.children_by_field_name("name"):
+        name, alias = _imported_name(name_node)
+        if name:
+            names.append(name)
+            if alias != name:
+                aliases[name] = alias
+    return _import_info(module, level, names, aliases, type_only)
 
 
 def _resolve_relative_imports(
@@ -576,25 +632,26 @@ def link(facts: list[FileFacts]) -> DependencyGraph:
         all_refs = refs | type_refs
         imports = module_imports.get(fqn, [])
 
-        def relation(local: str) -> str | None:
+        def relation(local: str, type_only: bool) -> str | None:
             if not all_refs or local in refs:
-                return "import"
+                return "uses" if type_only else "import"
             return "uses" if local in type_refs else None
 
         for imp_info in imports:
+            type_only = imp_info.get("type_only", False)
             module = imp_info["module"]
             names = imp_info["names"]
             aliases = imp_info.get("aliases", {})
             if names:
                 for name in names:
-                    kind = relation(aliases.get(name, name))
+                    kind = relation(aliases.get(name, name), type_only)
                     if kind is None:
                         continue
                     target = resolve(module, name)
                     if target is not None:
                         edges.append(Edge(source=fqn, target=target, relation=kind))
             else:
-                kind = relation(module.split(".")[-1])
+                kind = relation(module.split(".")[-1], type_only)
                 if kind is None:
                     continue
                 if module in entities:
