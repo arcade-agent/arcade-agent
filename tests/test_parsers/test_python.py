@@ -408,6 +408,30 @@ def test_string_forward_reference_annotation_creates_a_uses_edge(tmp_path):
     assert ("pkg.api.routes.inner", "pkg.store.repo.TaskRepository", "uses") in edges
 
 
+def test_literal_values_and_annotated_metadata_are_not_forward_references(tmp_path):
+    edges = _annotation_edges(tmp_path, (
+        "import typing\n"
+        "from typing import Annotated, Literal\n"
+        "from fastapi import Depends\n"
+        "from pkg.store.repo import TaskRepository\n\n"
+        "def get_repo():\n"
+        "    return None\n\n"
+        "def lit(kind: Literal[\"TaskRepository\"]):\n"
+        "    return kind\n\n"
+        "def qualified(kind: typing.Literal[\"TaskRepository\"]):\n"
+        "    return kind\n\n"
+        "def doc(n: Annotated[int, \"a TaskRepository id\"]):\n"
+        "    return n\n\n"
+        "def injected(repo: Annotated[TaskRepository, Depends(get_repo)]):\n"
+        "    return repo\n"
+    ))
+
+    for fn in ("lit", "qualified", "doc"):
+        assert not [e for e in edges if e[0] == f"pkg.api.routes.{fn}"], fn
+    # Annotated's first argument is still the type.
+    assert ("pkg.api.routes.injected", "pkg.store.repo.TaskRepository", "uses") in edges
+
+
 def test_string_literals_outside_annotations_do_not_create_edges(tmp_path):
     edges = _annotation_edges(tmp_path, (
         "from pkg.store.repo import TaskRepository\n\n"
