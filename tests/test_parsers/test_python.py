@@ -588,3 +588,47 @@ def test_imports_in_match_blocks_are_kept(tmp_path):
     ))
 
     assert ("pkg.api.routes.f", "pkg.store.repo.TaskRepository", "import") in edges
+
+
+def test_same_module_reference_creates_a_calls_edge(tmp_path):
+    paths = _write(tmp_path, {
+        "pkg/score.py": (
+            "def _clamp(x):\n"
+            "    return x\n\n"
+            "class Result:\n"
+            "    pass\n\n"
+            "def score(x):\n"
+            "    return Result(), _clamp(x)\n\n"
+            "def unrelated(score_value):\n"
+            "    return score_value\n"
+        ),
+    })
+    graph = PythonParser().parse(paths, tmp_path)
+    edges = graph.to_edge_tuples()
+
+    assert ("pkg.score.score", "pkg.score._clamp", "calls") in edges
+    assert ("pkg.score.score", "pkg.score.Result", "calls") in edges
+    assert not [e for e in edges if e[0] == "pkg.score.unrelated"]
+    assert graph.relation_coverage()["python"] == {
+        "collected_relations": ["calls", "extends", "import", "uses"],
+        "call_coverage": "partial",
+    }
+
+
+def test_annotation_only_same_module_reference_is_not_a_call(tmp_path):
+    paths = _write(tmp_path, {
+        "pkg/models.py": (
+            "class User:\n"
+            "    pass\n\n"
+            "def name(user: User) -> str:\n"
+            "    return 'x'\n\n"
+            "class Admin:\n"
+            "    def promote(self):\n"
+            "        return self.demote()\n\n"
+            "    def demote(self):\n"
+            "        return None\n"
+        ),
+    })
+    edges = PythonParser().parse(paths, tmp_path).to_edge_tuples()
+
+    assert not [e for e in edges if e[2] == "calls"]
