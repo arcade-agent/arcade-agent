@@ -24,10 +24,22 @@ top-level `if`/`else`, `try`/`except ImportError` fallbacks and `with` blocks
 yield edges to every branch's target, as any of them may run. Imports inside
 functions and classes are still not file imports.
 
+A runtime reference to a top-level function or class in the same module now
+produces a `calls` edge, and Python graphs declare `relation_coverage`
+(`call_coverage: "partial"`; calls through `self`, instances or other modules
+are not resolved). Before, a cohesive module whose functions call each other
+had almost no internal edges, so Concern Overload flagged it and `pkg`
+recovery placed entities by their imports alone. On arcade-agent's own
+`v0.2.0`, entities recovered outside their package drop from 35 to 6, and the
+Concern Overload and Dependency Cycle reports that came from those misplaced
+entities go away. Single-language Python graphs now carry a `metadata` key.
+The graph cache schema is bumped; re-baseline Python projects after upgrading.
+
 ### Bug Fixes
 
 * **python:** create dependency edges for type-annotation references
 * **python:** keep imports nested in module-level `if TYPE_CHECKING`, `if`, `try` and `with` blocks
+* **python:** create `calls` edges for same-module references and declare relation coverage
 
 ## [0.4.2](https://github.com/arcade-agent/arcade-agent/compare/v0.4.1...v0.4.2) (2026-10-11)
 
