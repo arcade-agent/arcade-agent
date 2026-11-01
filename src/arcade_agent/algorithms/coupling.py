@@ -164,6 +164,10 @@ def _smell_burden(
 
     burden = 0.0
     for smell in smells:
+        # Unverified naming-only candidates remain visible in reports but must
+        # not be treated as measured architecture degradation.
+        if not smell.scoring_eligible:
+            continue
         smell_type = (
             smell.smell_type.value
             if hasattr(smell.smell_type, "value")

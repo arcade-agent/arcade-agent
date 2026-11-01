@@ -148,22 +148,33 @@ def detect_smells(
         # Heuristic: Scattered Parasitic Functionality
         scattered = detect_scattered_functionality(architecture, dep_graph)
         for item in scattered:
+            sample_entities = ", ".join(
+                match["entity"] for match in item["evidence"][:5]
+            )
+            if len(item["evidence"]) > 5:
+                sample_entities += f" (+{len(item['evidence']) - 5} more)"
             smells.append(SmellInstance(
                 smell_type=SmellType.SCATTERED_FUNCTIONALITY,
                 severity=item["severity"],
+                scoring_eligible=False,  # Naming-only candidate; no score penalty.
                 affected_components=item["components"],
                 description=(
-                    f"'{item['pattern']}' pattern is scattered across "
+                    f"Possible '{item['pattern']}' concern by naming across "
                     f"{item['count']} components: {', '.join(item['components'])}"
                 ),
                 explanation=(
-                    "When a single concern is spread across many components, changes "
-                    "to that concern require modifying multiple places, increasing "
-                    "the risk of inconsistencies and bugs."
+                    "This is a naming-only heuristic: entities share the specific "
+                    f"'{item['pattern']}' stem in different roles "
+                    f"({', '.join(item['matched_suffixes'])}). "
+                    "It is not a verified violation; the responsibilities may "
+                    "correctly span multiple architectural layers. "
+                    f"Matching entity evidence: {sample_entities}. Review their "
+                    "dependency paths before treating this candidate as a defect."
                 ),
                 suggestion=(
-                    f"Centralize '{item['pattern']}'-related functionality into a "
-                    f"dedicated component to reduce scattering."
+                    f"Review '{item['pattern']}' responsibilities across the listed "
+                    "components and architectural intent before considering any "
+                    "consolidation or refactor."
                 ),
             ))
 

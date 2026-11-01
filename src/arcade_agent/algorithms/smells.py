@@ -23,3 +23,6 @@ class SmellInstance:
     description: str = ""
     explanation: str = ""
     suggestion: str = ""
+    # Naming-only hypotheses are reportable but must not change quality scores.
+    # Existing structural/heuristic smells retain their previous scoring default.
+    scoring_eligible: bool = True
