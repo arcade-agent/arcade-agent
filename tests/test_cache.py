@@ -357,6 +357,29 @@ def test_cache_key_changes_with_graph_cache_schema_version(tmp_project, monkeypa
     assert k1 != k2
 
 
+def test_parse_invalidates_cache_with_unqualified_java_packages(tmp_path, monkeypatch):
+    source = tmp_path / "Foo.java"
+    source.write_text("package a; public class Foo {}\n")
+    files = [str(source)]
+    legacy = DependencyGraph(
+        entities={"Foo": Entity("Foo", "Foo", "", "Foo.java", "class", "java")},
+        edges=[],
+        packages={"": ["Foo"]},
+    )
+    with monkeypatch.context() as previous_version:
+        previous_version.setattr(graph_cache, "_GRAPH_CACHE_SCHEMA_VERSION", "12")
+        key = cache_key(str(tmp_path), "java", files)
+    put_cached_graph(str(tmp_path), key, legacy)
+
+    fresh = parse(str(tmp_path), language="java", files=files)
+
+    assert set(fresh.entities) == {"a.Foo"}
+    parser = Mock(side_effect=AssertionError("Warm cache must skip parsing"))
+    monkeypatch.setattr(JavaParser, "parse", parser)
+    assert parse(str(tmp_path), language="java", files=files) == fresh
+    parser.assert_not_called()
+
+
 @pytest.fixture
 def java_project_with_unused_import(tmp_path):
     pool = tmp_path / "p" / "a" / "Pool.java"
