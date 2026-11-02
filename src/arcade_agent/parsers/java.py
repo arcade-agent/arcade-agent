@@ -24,7 +24,7 @@ def _extract_package(root_node: Node) -> str:
     for child in root_node.children:
         if child.type == "package_declaration":
             for sub in child.children:
-                if sub.type == "scoped_identifier":
+                if sub.type in ("identifier", "scoped_identifier"):
                     return _get_text(sub)
     return ""
 
