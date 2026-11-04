@@ -158,6 +158,6 @@ jobs:
           path: dist
           merge-multiple: true
       - name: Publish verified CI distributions to PyPI
-        uses: pypa/gh-action-pypi-publish@v1.14.0
+        uses: pypa/gh-action-pypi-publish@v1.14.3
         with:
           skip-existing: true
