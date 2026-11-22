@@ -107,48 +107,81 @@ def detect_scattered_functionality(
     dep_graph: DependencyGraph,
     min_components: int = 3,
 ) -> list[dict]:
-    """Detect functionality scattered across too many components.
+    """Identify *candidates* for a shared concern, never verified violations.
 
-    Looks for naming patterns (suffixes like Service, Controller, Repository)
-    that appear in multiple components, suggesting a concern is scattered.
+    Generic role suffixes such as Service, Configuration and Controller describe
+    architectural roles, not the same functionality. A candidate requires a
+    shared, non-generic class-name stem in multiple components and evidence in
+    at least two distinct roles. Even then, naming alone cannot establish
+    whether scattering is harmful or intentional layering.
 
     Args:
-        architecture: The recovered architecture.
-        dep_graph: The dependency graph.
-        min_components: Minimum number of components a pattern must appear in.
+        architecture: Recovered components and their entity identities.
+        dep_graph: Parsed entities that provide class names and kinds.
+        min_components: Minimum distinct components sharing a specific stem.
 
     Returns:
-        List of dicts with pattern, components, and count.
+        Low-severity naming candidates with concrete matching entity evidence.
     """
-    common_suffixes = [
-        "Service", "Controller", "Repository", "Manager", "Handler",
-        "Factory", "Listener", "Provider", "Adapter", "Helper",
-        "Util", "Utils", "Config", "Configuration", "Exception",
-        "Test", "Spec",
-    ]
-
-    # Track which components contain each suffix pattern
-    suffix_components: dict[str, set[str]] = {}
+    role_suffixes = (
+        "Configuration", "Controller", "Repository", "Listener", "Provider",
+        "Manager", "Handler", "Factory", "Adapter", "Service", "Helper",
+        "Exception", "Config", "Utils", "Util", "Test", "Spec",
+    )
+    # Stems that describe implementation style rather than a domain concern.
+    generic_stems = {
+        "abstract", "application", "base", "common", "core", "default",
+        "general", "global", "internal", "shared", "simple", "standard",
+    }
+    hits_by_stem: dict[str, dict[str, list[dict[str, str]]]] = {}
 
     for comp in architecture.components:
         for fqn in comp.entities:
             entity = dep_graph.entities.get(fqn)
-            if not entity:
+            if entity is None or entity.kind not in {
+                "class", "interface", "record", "object",
+            }:
                 continue
-            for suffix in common_suffixes:
-                if entity.name.endswith(suffix):
-                    suffix_components.setdefault(suffix, set()).add(comp.name)
-                    break
+            for suffix in role_suffixes:
+                if not entity.name.endswith(suffix):
+                    continue
+                stem = entity.name[:-len(suffix)]
+                if (
+                    len(stem) >= 4
+                    and stem.isidentifier()
+                    and stem.casefold() not in generic_stems
+                ):
+                    hits_by_stem.setdefault(stem, {}).setdefault(
+                        comp.name, [],
+                    ).append({
+                        "component": comp.name,
+                        "entity": fqn,
+                        "role_suffix": suffix,
+                    })
+                break
 
     results = []
-    for suffix, components in sorted(suffix_components.items()):
-        if len(components) >= min_components:
-            results.append({
-                "pattern": suffix,
-                "components": sorted(components),
-                "count": len(components),
-                "severity": "high" if len(components) >= 5 else "medium",
-            })
+    for stem, component_hits in sorted(hits_by_stem.items()):
+        if len(component_hits) < min_components:
+            continue
+        evidence = sorted(
+            (hit for hits in component_hits.values() for hit in hits),
+            key=lambda hit: (hit["component"], hit["entity"]),
+        )
+        matched_suffixes = sorted({hit["role_suffix"] for hit in evidence})
+        if len(matched_suffixes) < 2:
+            # A single generic role repeated across modules is not proof that
+            # those modules implement a shared, scattered responsibility.
+            continue
+        results.append({
+            "pattern": stem,
+            "components": sorted(component_hits),
+            "count": len(component_hits),
+            "severity": "low",
+            "evidence_kind": "shared_name_stem",
+            "matched_suffixes": matched_suffixes,
+            "evidence": evidence,
+        })
 
     return results
 

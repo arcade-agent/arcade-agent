@@ -24,8 +24,18 @@ top-level `if`/`else`, `try`/`except ImportError` fallbacks and `with` blocks
 yield edges to every branch's target, as any of them may run. Imports inside
 functions and classes are still not file imports.
 
+Scattered Parasitic Functionality detection now requires shared,
+specific-concern evidence. Classes grouped only by a generic role suffix
+(`Service`, `Configuration`, `Manager`, …) are no longer reported as
+violations; they are emitted as low-confidence naming candidates that stay
+visible in reports but are excluded from architecture scores
+(`scoring_eligible = False` on the smell record). Projects whose baselines
+counted suffix-only warnings may see smell counts and smell-burden scores
+drop after upgrading; re-baseline if a gate depended on them.
+
 ### Bug Fixes
 
+* **smells:** require shared concern evidence before scattered-functionality alerts; naming-only candidates no longer affect scores
 * **python:** create dependency edges for type-annotation references
 * **python:** keep imports nested in module-level `if TYPE_CHECKING`, `if`, `try` and `with` blocks
 
