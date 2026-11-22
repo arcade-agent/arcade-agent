@@ -54,6 +54,28 @@ def test_java_parser_packages(java_files, fixtures_dir):
     assert len(graph.packages["com.example.util"]) >= 1
 
 
+def test_java_parser_single_segment_packages_keep_same_named_classes(tmp_path):
+    for package in ("a", "b"):
+        directory = tmp_path / package
+        directory.mkdir()
+        (directory / "Foo.java").write_text(
+            f"package {package};\npublic class Foo {{ public void run() {{}} }}\n"
+        )
+    (tmp_path / "Default.java").write_text("public class Default {}\n")
+    (tmp_path / "Dotted.java").write_text("package com.example; public class Dotted {}\n")
+
+    graph = JavaParser().parse(sorted(tmp_path.rglob("*.java")), tmp_path)
+
+    for package in ("a", "b"):
+        fqn = f"{package}.Foo"
+        assert graph.entities[fqn].package == package
+        assert graph.entities[fqn].file_path == f"{package}/Foo.java"
+        assert graph.entities[f"{fqn}.run"].properties["owner"] == fqn
+        assert graph.packages[package] == [fqn, f"{fqn}.run"]
+    assert graph.entities["Default"].package == ""
+    assert graph.entities["com.example.Dotted"].package == "com.example"
+
+
 def test_java_parser_empty():
     parser = JavaParser()
     graph = parser.parse([], Path("/tmp"))
