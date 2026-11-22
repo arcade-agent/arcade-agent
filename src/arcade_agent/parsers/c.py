@@ -35,12 +35,15 @@ def _extract_includes(root_node) -> list[str]:
 
 
 def _collect_nodes(node, type_names: set[str]) -> list:
-    """Recursively collect nodes of given types."""
+    """Iteratively collect nodes of given types in pre-order."""
     results = []
-    if node.type in type_names:
-        results.append(node)
-    for child in node.children:
-        results.extend(_collect_nodes(child, type_names))
+    stack = [node]
+    while stack:
+        current = stack.pop()
+        if current.type in type_names:
+            results.append(current)
+        if current.children:
+            stack.extend(reversed(current.children))
     return results
 
 
@@ -91,16 +94,14 @@ def _parse_function(node) -> dict | None:
 
 
 def _find_identifier(node) -> str | None:
-    """Recursively find the identifier name in a declarator."""
-    if node.type == "identifier":
-        return _get_text(node)
-    if node.type == "field_identifier":
-        return _get_text(node)
-    # For function_declarator, pointer_declarator, etc.
-    for child in node.children:
-        result = _find_identifier(child)
-        if result:
-            return result
+    """Iteratively find the first identifier name in a declarator (pre-order)."""
+    stack = [node]
+    while stack:
+        current = stack.pop()
+        if current.type in ("identifier", "field_identifier"):
+            return _get_text(current)
+        if current.children:
+            stack.extend(reversed(current.children))
     return None
 
 

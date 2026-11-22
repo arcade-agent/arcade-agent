@@ -90,3 +90,19 @@ def test_c_parser_mixed():
     languages = {e.language for e in graph.entities.values()}
     assert "c" in languages
     assert "cpp" in languages
+
+
+def test_c_parser_deeply_nested_ast_no_recursion_error(tmp_path):
+    """Deeply nested C ASTs (e.g. >1500 levels) must parse without RecursionError."""
+    depth = 1500
+    nested_expr = "(" * depth + "1" + ")" * depth
+    src = tmp_path / "deep.c"
+    src.write_text(f"int deep_func(void) {{ return {nested_expr}; }}\n")
+
+    parser = CParser()
+    graph = parser.parse([src], tmp_path)
+
+    assert any(
+        e.name == "deep_func" and e.kind == "function"
+        for e in graph.entities.values()
+    )
