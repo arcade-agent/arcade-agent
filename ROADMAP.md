@@ -49,6 +49,17 @@ Handle real-world polyglot monorepos.
 - [x] **17. Incremental parsing** — Content-hash extract cache shipped in #9 (`incremental.py`), wired for the Python parser only; extending to the other two-pass parsers is follow-up.
 - [x] **18. Cross-language dependency tracking** — MVP: multi-language ingest/parse (`languages=[...]` / `language="multi"`) merges per-language graphs and relinks import/extends/implements across FQN space. Relinking is **family-scoped**: the `jvm` family (Java↔Kotlin) is the supported and validated pair; every other language is its own family and is merged without cross-language edges. Extending relinking to further families (and broader RPC/IDL bridges — gRPC stubs, OpenAPI) remains follow-up.
 
+## Phase 5.5 — Parser Hardening & Two-Level Multi-Module Evaluation
+
+Harden recovery and parsers against real-world monorepo/workspace edge cases (surfaced by a 21-repo OSS audit) and introduce native two-level (inter-module + intra-module) architectural scoring.
+
+- [x] **18a. Parser & smell precision fixes (merged on `main`, pending `v0.4.3` release)** — Python type-annotation edges (#80), nested module-level imports (#81), same-module Python call edges (#91), shared-concern evidence for Scattered Parasitic Functionality (#92), and Java single-segment package preservation (#93).
+- [ ] **18b. [P0] Hard module/crate/package boundaries in `_refine_facade_groups`** — Prevent `pkg` facade refinement from moving entities across Cargo crate, Go package, or module boundaries and fabricating impossible compile-time cycles. (#95)
+- [ ] **18c. [P0] Iterative AST traversal in `parsers/c.py`** — Replace recursive `_collect_nodes()` walk with an explicit stack to prevent `RecursionError` on large C codebases such as PostgreSQL. (#96)
+- [ ] **18d. [P1] Two-level multi-module evaluation (L1 inter-module + L2 intra-module) & cross-language module detection** — Stdlib manifest parsers (Maven/Gradle/Bazel/Cargo/Go/JS/Python/C), deterministic module role classification (`production` vs `docs`/`example`/`test`/`benchmark`/`generated_ffi`/`tooling`), Tier C decision model (`SINGLE_LEVEL` / `TWO_LEVEL_MANIFEST` / `TWO_LEVEL_VIRTUAL`), auto-deepening for mega-modules, and `schema_version: "2.0"` rollup (`0.45*L1 + 0.45*L2_log1p + 0.10*WorstModule`). (#97)
+- [ ] **18e. [P1] TypeScript `package.json` `#imports` support** — Resolve Node.js subpath `#imports` without emitting config warnings or falsely qualifying graphs. (#98)
+- [ ] **18f. [P2] Baseline `analyzer_version` & `schema_version` tracking** — Embed analyzer/schema versions in `.arcade/baseline.json` and warn on cross-version baseline diffs. (#99)
+
 ## Phase 6 — Agent Protocol Integration
 
 Work everywhere agents work.
@@ -74,13 +85,14 @@ none is implemented yet.
 - [ ] **27. Guard audit log** — Append one JSONL event per `propose_placement` / `preview_impact` / `check_architecture` / `remediate` call (timestamp, agent, inputs, verdict, violations). COMP5320 M5 asks students to log what the agent tried and what the guard caught; ArchAgentBench and consulting assessments need the same record. (#87)
 - [ ] **28. `init_spec --from-recovery`** — Draft `architecture.spec.json` from a recovered architecture: components, observed allowed dependencies, suggested forbids from layer order, and optional LLM-proposed component names (`tools/recover.py` derives names from package keys only). Closes the "guard checks hand-written globs, not the recovered architecture" critique and is D3's "flip it" study. (#88)
 - [ ] **29. Cycle classification** — In `remediate` and `detect_smells`, label each component cycle as code-level, architecture-level or both (entity SCCs vs component SCCs; `algorithms/cycles.py` already uses `strongly_connected_components`) and say when refactoring code alone cannot break it (Le et al., ICSA 2018). (#89)
-- [ ] **30. Housekeeping before COMP5320 M3** — Cut a release carrying the Unreleased Python type-annotation `uses` edges and nested-import fixes (#80, #81) before students install arcade-agent for M3. Reconcile the lecture deck, which still cites the 14+14 pilot (21% → 0%), with the ICSE 2027 demo paper's 130 runs (20/20 → 5/20 → 0/20). (#90)
+- [ ] **30. Housekeeping before COMP5320 M3** — Cut `v0.4.3` carrying the merged fixes on `main` (#80, #81, #91, #92, #93) plus P0 fixes (#95, #96) before students install arcade-agent for M3. Reconcile the lecture deck, which still cites the 14+14 pilot (21% → 0%), with the ICSE 2027 demo paper's 130 runs (20/20 → 5/20 → 0/20). (#90)
 
 ## Priority Order
 
 | Priority | Items | Rationale |
 |----------|-------|-----------|
-| **Done** | 1–10, 12, 13, 14, 15, 16a, 16a2, 16b, 17, 18 (MVP) | Phases 1–2 + TS/JS & Go & Kotlin & Rust parsers, incremental parsing (Python), `diff_impact`, `context_for_task`, `api_surface`, polyglot merge+relink, `changelog_architecture` |
-| **Now** | 30, 11 | Release the pending Python parser fixes before COMP5320 M3; component ownership |
-| **Then** | 23–29 | Phase 7 in listed order: drift vs erosion, hotspots, evolution series, smell catalog, audit log, spec from recovery, cycle classification |
+| **Done** | 1–10, 12, 13, 14, 15, 16a, 16a2, 16b, 17, 18 (MVP), 18a | Phases 1–2 + TS/JS & Go & Kotlin & Rust parsers, incremental parsing (Python), `diff_impact`, `context_for_task`, `api_surface`, polyglot merge+relink, `changelog_architecture`, plus merged precision fixes (#80, #81, #91, #92, #93) |
+| **Now (Wave 0 / `v0.4.3`)** | 18b (#95), 18c (#96), 30 (#90) | Fix P0 cross-boundary facade cycles and C parser `RecursionError`, then cut `v0.4.3` carrying #80/#81/#91/#92/#93/#95/#96 |
+| **Next (Wave 1 / `v0.5.0`)** | 18d (#97), 18e (#98), 23 (#83), 24 (#84), #31 | Two-level multi-module evaluation (opt-in), TS `#imports`, drift vs erosion, hotspots, and `--no-llm` privacy control |
+| **Then (Wave 2 / `v0.6.0`)** | 18f (#99), 25–29 (#85–#89), 11 | Two-level default `auto` + `arcade-attest` integration, baseline versioning, Phase 7 research tools, component ownership |
 | **Later** | 19–22 | Ecosystem breadth (OpenAI / LangChain / Claude SDK / IDE) |
