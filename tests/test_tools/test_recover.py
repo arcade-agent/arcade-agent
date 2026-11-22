@@ -179,3 +179,143 @@ def test_package_entity_joins_its_sub_package_group():
 
     members = {c.name: set(c.entities) for c in arch.components}
     assert "app.api" in members["Api"]
+
+
+def test_package_based_recovery_does_not_reassign_across_rust_crates():
+    """Rust crate boundaries are compiler-enforced DAGs; never move entities across crates."""
+    graph = DependencyGraph(
+        entities={
+            "crate_a.adapter.wrap": Entity(
+                fqn="crate_a.adapter.wrap",
+                name="wrap",
+                package="crate_a.adapter",
+                file_path="crates/crate-a/src/adapter.rs",
+                kind="function",
+                language="rust",
+            ),
+            "crate_a.lib.run": Entity(
+                fqn="crate_a.lib.run",
+                name="run",
+                package="crate_a.lib",
+                file_path="crates/crate-a/src/lib.rs",
+                kind="function",
+                language="rust",
+            ),
+            "crate_b.core.Core": Entity(
+                fqn="crate_b.core.Core",
+                name="Core",
+                package="crate_b.core",
+                file_path="crates/crate-b/src/core.rs",
+                kind="struct",
+                language="rust",
+            ),
+        },
+        edges=[
+            Edge(source="crate_a.adapter.wrap", target="crate_b.core.Core", relation="import"),
+        ],
+    )
+
+    arch = recover(graph, algorithm="pkg", pkg_depth=1)
+    membership = arch.membership()
+
+    assert membership["crate_a.adapter.wrap"] == membership["crate_a.lib.run"]
+    assert membership["crate_a.adapter.wrap"] != membership["crate_b.core.Core"]
+    assert "facade refinement" not in arch.rationale
+
+
+def test_package_based_recovery_does_not_reassign_across_go_packages():
+    """Go forbids circular package imports; never merge internal.webhook.v1 into api.v1."""
+    graph = DependencyGraph(
+        entities={
+            "internal.webhook.v1.ValidateCluster": Entity(
+                fqn="internal.webhook.v1.ValidateCluster",
+                name="ValidateCluster",
+                package="internal.webhook.v1",
+                file_path="internal/webhook/v1/cluster_webhook.go",
+                kind="function",
+                language="go",
+            ),
+            "internal.webhook.v1.Setup": Entity(
+                fqn="internal.webhook.v1.Setup",
+                name="Setup",
+                package="internal.webhook.v1",
+                file_path="internal/webhook/v1/setup.go",
+                kind="function",
+                language="go",
+            ),
+            "api.v1.Cluster": Entity(
+                fqn="api.v1.Cluster",
+                name="Cluster",
+                package="api.v1",
+                file_path="api/v1/cluster_types.go",
+                kind="struct",
+                language="go",
+            ),
+        },
+        edges=[
+            Edge(
+                source="internal.webhook.v1.ValidateCluster",
+                target="api.v1.Cluster",
+                relation="import",
+            ),
+        ],
+    )
+
+    arch = recover(graph, algorithm="pkg", pkg_depth=2)
+    membership = arch.membership()
+
+    assert (
+        membership["internal.webhook.v1.ValidateCluster"]
+        == membership["internal.webhook.v1.Setup"]
+    )
+    assert membership["internal.webhook.v1.ValidateCluster"] != membership["api.v1.Cluster"]
+    assert "facade refinement" not in arch.rationale
+
+
+def test_package_based_recovery_does_not_reassign_across_explicit_modules():
+    """Entities tagged with distinct module properties stay within their declared module."""
+    graph = DependencyGraph(
+        entities={
+            "com.example.chat.facade": Entity(
+                fqn="com.example.chat.facade",
+                name="facade",
+                package="com.example.chat",
+                file_path="mod-chat/chat.py",
+                kind="function",
+                language="python",
+                properties={"module": "mod-chat"},
+            ),
+            "com.example.chat.other": Entity(
+                fqn="com.example.chat.other",
+                name="other",
+                package="com.example.chat",
+                file_path="mod-chat/other.py",
+                kind="function",
+                language="python",
+                properties={"module": "mod-chat"},
+            ),
+            "com.example.core.worker": Entity(
+                fqn="com.example.core.worker",
+                name="worker",
+                package="com.example.core",
+                file_path="mod-core/worker.py",
+                kind="function",
+                language="python",
+                properties={"module": "mod-core"},
+            ),
+        },
+        edges=[
+            Edge(
+                source="com.example.chat.facade",
+                target="com.example.core.worker",
+                relation="import",
+            ),
+        ],
+    )
+
+    arch = recover(graph, algorithm="pkg")
+    membership = arch.membership()
+
+    assert membership["com.example.chat.facade"] == membership["com.example.chat.other"]
+    assert membership["com.example.chat.facade"] != membership["com.example.core.worker"]
+    assert "facade refinement" not in arch.rationale
