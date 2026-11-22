@@ -5,7 +5,7 @@ from arcade_agent.algorithms.arc import arc
 from arcade_agent.algorithms.architecture import Architecture, Component
 from arcade_agent.algorithms.clustering import wca
 from arcade_agent.algorithms.limbo import limbo
-from arcade_agent.parsers.graph import DependencyGraph
+from arcade_agent.parsers.graph import DependencyGraph, Entity
 from arcade_agent.tools.registry import tool
 
 _JVM_LANGUAGES = frozenset({"java", "kotlin"})
@@ -96,6 +96,29 @@ def _local_utility_hubs(
     }
 
 
+def _hard_boundary_key(entity: Entity | None) -> str | None:
+    """Return an entity's hard module/crate/package boundary, if any.
+
+    Facade refinement must not move entities across compiler-enforced acyclic
+    boundaries or explicit module roots, because doing so fabricates impossible
+    bidirectional dependencies and cycles:
+    - Explicit ``module`` property (multi-module workspaces, any language)
+    - Go packages (Go forbids circular package imports)
+    - Rust top-level crates (Cargo forbids circular crate dependencies)
+    """
+    if entity is None:
+        return None
+    explicit_module = entity.properties.get("module")
+    if isinstance(explicit_module, str) and explicit_module:
+        return f"module:{explicit_module}"
+    if entity.language == "go":
+        return f"go:{entity.package}" if entity.package else None
+    if entity.language == "rust":
+        crate = entity.package.split(".", 1)[0] if entity.package else ""
+        return f"rust:{crate}" if crate else None
+    return None
+
+
 def _refine_facade_groups(
     dep_graph: DependencyGraph,
     groups: dict[str, list[str]],
@@ -105,11 +128,19 @@ def _refine_facade_groups(
     Package-only grouping can overstate architectural coupling when a package
     mainly exposes adapter functions that delegate straight into one subsystem.
     This refinement moves an entity only when it has no ties to peers in its
-    current group and all of its known dependencies point outward to one other
-    group. Entities without dependencies or with mixed responsibilities stay put.
+    current group, all of its known dependencies point outward to one other
+    group, and the move does not cross a hard module/crate/package boundary.
+    Entities without dependencies or with mixed responsibilities stay put.
     """
     membership = _entity_group_membership(groups)
     utility_hubs = _local_utility_hubs(dep_graph, membership)
+    group_boundaries: dict[str, set[str | None]] = {
+        group_key: {
+            _hard_boundary_key(dep_graph.entities.get(fqn))
+            for fqn in entity_fqns
+        }
+        for group_key, entity_fqns in groups.items()
+    }
     outgoing_by_entity: dict[str, list[str]] = {fqn: [] for fqn in dep_graph.entities}
     incoming_by_entity: dict[str, list[str]] = {fqn: [] for fqn in dep_graph.entities}
 
@@ -159,7 +190,12 @@ def _refine_facade_groups(
         if disqualify or own_group_links > 0 or len(target_groups) != 1:
             continue
 
-        moves[entity_fqn] = next(iter(target_groups))
+        target_group = next(iter(target_groups))
+        src_boundary = _hard_boundary_key(dep_graph.entities.get(entity_fqn))
+        if src_boundary is not None and group_boundaries.get(target_group) != {src_boundary}:
+            continue
+
+        moves[entity_fqn] = target_group
 
     if not moves:
         return groups, 0
