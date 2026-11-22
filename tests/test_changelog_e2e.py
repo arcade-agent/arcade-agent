@@ -23,6 +23,14 @@ appears. What remains is 2 entities flowing from ``Algorithms`` (55) into the
 ``min_share`` reports it as a split and a merge at any ``min_entities``. The
 two tests below pin that shape, and pin that ``min_entities=8`` alone
 (``min_share=1.0``) still keeps the small move stable.
+
+Re-measured again when the Python parser started emitting ``calls`` edges for
+same-module references: ``pkg`` recovery places fewer entities outside their
+own package, so ``Algorithms`` keeps 58 entities, ``Serialization`` has 8, and
+``exporters.json.build_graph_summary`` no longer shifts (shifts: 4 -> 3). The
+2-entity move is now 25% of ``Serialization``, still above ``min_share``.
+Between ``v0.1.1`` and ``v0.2.0`` the one remaining shift
+(``mcp._build_server``) disappears the same way.
 """
 
 from pathlib import Path
@@ -74,7 +82,7 @@ def test_changelog_between_real_releases():
         summary = result["summary"]
         assert summary["components_a"] == 9
         assert summary["components_b"] == 9
-        assert summary["shifts"] == 1
+        assert summary["shifts"] == 0
         assert summary["entities_a"] == 305
         assert summary["entities_b"] == 331
 
@@ -134,17 +142,17 @@ def test_low_threshold_reports_algorithms_serialization_as_split_and_merge():
             {
                 "from": "Algorithms",
                 "into": ["Algorithms", "Serialization"],
-                "entities": {"Algorithms": 55, "Serialization": 2},
+                "entities": {"Algorithms": 58, "Serialization": 2},
             }
         ]
         assert components["merged"] == [
             {
                 "into": "Serialization",
                 "from": ["Algorithms", "Serialization"],
-                "entities": {"Algorithms": 2, "Serialization": 7},
+                "entities": {"Algorithms": 2, "Serialization": 8},
             }
         ]
-        assert result["summary"]["shifts"] == 4
+        assert result["summary"]["shifts"] == 3
     finally:
         repo_a.cleanup()
         repo_b.cleanup()
@@ -160,9 +168,9 @@ def test_min_entities_default_treats_small_move_as_stable():
     With ``min_share`` disabled, the 2-entity Algorithms/Serialization move
     between v0.1.0 and v0.1.1 reports no split or merge at the default
     threshold -- both components read as stable, with the movement still
-    visible as responsibility shifts (shifts=4, same as at the lower
+    visible as responsibility shifts (shifts=3, same as at the lower
     threshold). This test fails if someone lowers the default without
-    re-checking this datapoint. At the default ``min_share`` the move is 28%
+    re-checking this datapoint. At the default ``min_share`` the move is 25%
     of ``Serialization`` and is reported (see the module docstring).
     """
     repo_a = ingest(str(REPO_ROOT), language="python", ref="v0.1.0")
@@ -183,7 +191,7 @@ def test_min_entities_default_treats_small_move_as_stable():
         assert components["merged"] == []
         assert "Algorithms" in components["stable"]
         assert "Serialization" in components["stable"]
-        assert result["summary"]["shifts"] == 4
+        assert result["summary"]["shifts"] == 3
     finally:
         repo_a.cleanup()
         repo_b.cleanup()

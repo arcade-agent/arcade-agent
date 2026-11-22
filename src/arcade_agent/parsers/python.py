@@ -660,6 +660,14 @@ def link(facts: list[FileFacts]) -> DependencyGraph:
             target = _resolve_superclass(entity, imports, entities, resolve)
             if target is not None:
                 edges.append(Edge(source=fqn, target=target, relation="extends"))
+        # A runtime reference to a top-level function or class of the same
+        # module is a "calls" edge. Imports never cover these, so without them
+        # a cohesive module looks internally sparse to Concern Overload.
+        module = _module_of(entity.file_path)
+        for name in refs:
+            target = f"{module}.{name}"
+            if target != fqn and target in entities and entities[target].kind != "method":
+                edges.append(Edge(source=fqn, target=target, relation="calls"))
 
     seen: set[tuple[str, str, str]] = set()
     unique_edges: list[Edge] = []
@@ -669,7 +677,15 @@ def link(facts: list[FileFacts]) -> DependencyGraph:
             seen.add(key)
             unique_edges.append(edge)
 
-    return DependencyGraph(entities=entities, edges=unique_edges, packages=packages)
+    # Calls through self, instances or other modules are not resolved, so call
+    # coverage is partial.
+    return DependencyGraph(
+        entities=entities, edges=unique_edges, packages=packages,
+        metadata={"relation_coverage": {"python": {
+            "collected_relations": ["calls", "extends", "import", "uses"],
+            "call_coverage": "partial",
+        }}},
+    )
 
 
 @register_parser
